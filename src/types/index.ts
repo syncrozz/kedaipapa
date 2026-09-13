@@ -14,6 +14,7 @@ export interface UserProfile {
 }
 
 export interface StoreSettings {
+  enableCustomers?: boolean;
   enableCustomerManagement?: boolean;
   enableLoyalty?: boolean;
   enableStaff?: boolean;
@@ -99,7 +100,7 @@ export interface Sale {
   items: SaleItem[];
   subtotal: number;
   discount: number;
-  tax: number; // 0 for now
+  tax?: number; // 0 for now
   total: number; // subtotal - discount + tax
   paymentMethod?: PaymentMethod; // Supported: 'CASH'
   cashReceived?: number;
@@ -205,6 +206,7 @@ export type StaffRole = 'OWNER' | 'MANAGER' | 'CASHIER' | 'INVENTORY_STAFF';
 export interface StaffUser {
   id: string;
   userCode: string; // e.g. "STF-001"
+  staffCode?: string; // alias for compatibility
   name: string;
   role: StaffRole;
   active: boolean;
@@ -222,4 +224,19 @@ export type ActivePage =
   | 'customers'
   | 'reports'
   | 'settings';
+
+export interface StoreBackupPayload {
+  schemaVersion: number;
+  system: string;
+  exportedAt: string;
+  store: Store;
+  products: Product[];
+  movements: InventoryMovement[];
+  sales: Sale[];
+  suppliers: Supplier[];
+  purchases: Purchase[];
+  customers: Customer[];
+  loyaltyLedger: LoyaltyLedgerEntry[];
+  staffUsers: StaffUser[];
+}
 

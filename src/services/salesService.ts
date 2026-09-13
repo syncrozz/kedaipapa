@@ -81,6 +81,7 @@ export class SalesService {
     let cashReceived: number | undefined = undefined;
     let paymentMethod: PaymentMethod = 'CASH';
     let notes: string | undefined = legacyNotes;
+    const options = typeof optionsOrDiscount === 'object' && optionsOrDiscount !== null ? optionsOrDiscount : undefined;
 
     if (typeof optionsOrDiscount === 'number') {
       discount = optionsOrDiscount;
@@ -331,6 +332,44 @@ export class SalesService {
       grossMarginPercentage,
       totalTransactions: sales.filter((s) => s.status === 'COMPLETED').length,
       totalItemsSold,
+    };
+  }
+
+  /**
+   * Calculates subtotal, total cost, and gross profit for a collection of line items.
+   */
+  public static calculateSaleEconomics(
+    items: {
+      quantity: number;
+      unitCostSnapshot: number;
+      unitSellingPriceSnapshot: number;
+    }[],
+    discount: number = 0
+  ): {
+    subtotal: number;
+    totalCost: number;
+    grossProfit: number;
+    total: number;
+  } {
+    let subtotal = 0;
+    let totalCost = 0;
+
+    for (const item of items) {
+      subtotal += Number((item.quantity * item.unitSellingPriceSnapshot).toFixed(2));
+      totalCost += Number((item.quantity * item.unitCostSnapshot).toFixed(2));
+    }
+
+    subtotal = Number(subtotal.toFixed(2));
+    totalCost = Number(totalCost.toFixed(2));
+    const effectiveDiscount = Number(Math.min(discount, subtotal).toFixed(2));
+    const total = Number(Math.max(0, subtotal - effectiveDiscount).toFixed(2));
+    const grossProfit = Number((total - totalCost).toFixed(2));
+
+    return {
+      subtotal,
+      totalCost,
+      grossProfit,
+      total,
     };
   }
 }

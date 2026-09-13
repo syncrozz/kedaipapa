@@ -900,6 +900,7 @@ export const INITIAL_STAFF: StaffUser[] = [
   {
     id: 'stf-001',
     userCode: 'STF-001',
+    staffCode: 'STF-001',
     name: 'Pak Samad',
     role: 'OWNER',
     active: true,
@@ -909,6 +910,7 @@ export const INITIAL_STAFF: StaffUser[] = [
   {
     id: 'stf-002',
     userCode: 'STF-002',
+    staffCode: 'STF-002',
     name: 'Ahmad',
     role: 'CASHIER',
     active: true,
@@ -918,6 +920,7 @@ export const INITIAL_STAFF: StaffUser[] = [
   {
     id: 'stf-003',
     userCode: 'STF-003',
+    staffCode: 'STF-003',
     name: 'Siti',
     role: 'INVENTORY_STAFF',
     active: true,

@@ -20,12 +20,20 @@ import { Part03VerificationRunner, Part03TestResult } from '../../services/part0
 import { Part04VerificationRunner, Part04TestResult } from '../../services/part04VerificationRunner';
 import { Part05VerificationRunner, Part05TestResult } from '../../services/part05VerificationRunner';
 import { Part06VerificationRunner, Part06TestResult } from '../../services/part06VerificationRunner';
+import { Part07VerificationRunner, Part07TestResult } from '../../services/part07VerificationRunner';
+import { Part08VerificationRunner, Part08TestResult } from '../../services/part08VerificationRunner';
 
 export const VerificationAuditSuite: React.FC = () => {
   const [activeSuiteTab, setActiveSuiteTab] = useState<
-    'ALL' | 'PART_06' | 'PART_05' | 'PART_04' | 'PART_03' | 'PART_02' | 'PART_01'
-  >('ALL');
+    'ALL' | 'PART_08' | 'PART_07' | 'PART_06' | 'PART_05' | 'PART_04' | 'PART_03' | 'PART_02' | 'PART_01'
+  >('PART_08');
 
+  const [part08Tests, setPart08Tests] = useState<Part08TestResult[]>(() =>
+    Part08VerificationRunner.runAllTests()
+  );
+  const [part07Tests, setPart07Tests] = useState<Part07TestResult[]>(() =>
+    Part07VerificationRunner.runAllTests()
+  );
   const [foundationTests, setFoundationTests] = useState<VerificationTestResult[]>(() =>
     VerificationRunner.runAllTests()
   );
@@ -49,6 +57,8 @@ export const VerificationAuditSuite: React.FC = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Overall counts
+  const part08Passed = part08Tests.filter((t) => t.passed).length;
+  const part07Passed = part07Tests.filter((t) => t.status === 'PASSED').length;
   const foundationPassed = foundationTests.filter((t) => t.status === 'PASSED').length;
   const part02Passed = part02Tests.filter((t) => t.status === 'PASSED').length;
   const part03Passed = part03Tests.filter((t) => t.status === 'PASSED').length;
@@ -57,6 +67,8 @@ export const VerificationAuditSuite: React.FC = () => {
   const part06Passed = part06Tests.filter((t) => t.status === 'PASSED').length;
 
   const totalTestsCount =
+    part08Tests.length +
+    part07Tests.length +
     foundationTests.length +
     part02Tests.length +
     part03Tests.length +
@@ -65,6 +77,8 @@ export const VerificationAuditSuite: React.FC = () => {
     part06Tests.length;
 
   const totalPassedCount =
+    part08Passed +
+    part07Passed +
     foundationPassed +
     part02Passed +
     part03Passed +
@@ -77,6 +91,8 @@ export const VerificationAuditSuite: React.FC = () => {
   const handleRerun = () => {
     setIsRunning(true);
     setTimeout(() => {
+      setPart08Tests(Part08VerificationRunner.runAllTests());
+      setPart07Tests(Part07VerificationRunner.runAllTests());
       setFoundationTests(VerificationRunner.runAllTests());
       setPart02Tests(Part02VerificationRunner.runAllTests());
       setPart03Tests(Part03VerificationRunner.runAllTests());
@@ -98,11 +114,11 @@ export const VerificationAuditSuite: React.FC = () => {
               Kedai PAPA POS — Continuous Verification &amp; Audit Suite
             </h2>
             <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
-              Parts 01.5 &ndash; 06
+              Parts 01.5 &ndash; 08 Production Ready
             </span>
           </div>
           <p className="text-xs text-stone-300 max-w-2xl">
-            Controlled verification of data model integrity, inventory movements, atomic POS checkout, sales &amp; profit reporting, supplier purchasing workflows, physical stock counts, and store-wide inventory reconciliation.
+            Exhaustive verification of data model integrity, inventory movements, atomic POS checkout, sales &amp; profit reporting, supplier purchasing workflows, physical stock counts, store-wide inventory reconciliation, and production hardening &amp; backup recovery.
           </p>
         </div>
 
@@ -130,41 +146,53 @@ export const VerificationAuditSuite: React.FC = () => {
       </div>
 
       {/* Mini Scoreboard Strip */}
-      <div className="p-3 bg-stone-50 border-b border-stone-200 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
-        <div className="p-3 bg-white rounded-lg border border-emerald-200 shadow-2xs">
-          <span className="text-emerald-700 block mb-0.5 font-medium">Part 06 Inventory</span>
-          <span className="text-lg font-bold font-mono text-emerald-700">
-            {part06Passed} / {part06Tests.length} Passed
+      <div className="p-3 bg-stone-50 border-b border-stone-200 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 text-xs">
+        <div className="p-2.5 bg-white rounded-lg border border-emerald-300 shadow-2xs">
+          <span className="text-emerald-800 block mb-0.5 font-bold">Part 08 Hardening</span>
+          <span className="text-base font-bold font-mono text-emerald-700">
+            {part08Passed} / {part08Tests.length}
           </span>
         </div>
-        <div className="p-3 bg-white rounded-lg border border-stone-200 shadow-2xs">
+        <div className="p-2.5 bg-white rounded-lg border border-stone-200 shadow-2xs">
+          <span className="text-stone-600 block mb-0.5 font-medium">Part 07 Modules</span>
+          <span className="text-base font-bold font-mono text-stone-900">
+            {part07Passed} / {part07Tests.length}
+          </span>
+        </div>
+        <div className="p-2.5 bg-white rounded-lg border border-stone-200 shadow-2xs">
+          <span className="text-stone-600 block mb-0.5 font-medium">Part 06 Inventory</span>
+          <span className="text-base font-bold font-mono text-stone-900">
+            {part06Passed} / {part06Tests.length}
+          </span>
+        </div>
+        <div className="p-2.5 bg-white rounded-lg border border-stone-200 shadow-2xs">
           <span className="text-stone-500 block mb-0.5 font-medium">Part 05 Purchasing</span>
-          <span className="text-lg font-bold font-mono text-stone-900">
-            {part05Passed} / {part05Tests.length} Passed
+          <span className="text-base font-bold font-mono text-stone-900">
+            {part05Passed} / {part05Tests.length}
           </span>
         </div>
-        <div className="p-3 bg-white rounded-lg border border-stone-200 shadow-2xs">
+        <div className="p-2.5 bg-white rounded-lg border border-stone-200 shadow-2xs">
           <span className="text-stone-500 block mb-0.5 font-medium">Part 04 Reports</span>
-          <span className="text-lg font-bold font-mono text-stone-900">
-            {part04Passed} / {part04Tests.length} Passed
+          <span className="text-base font-bold font-mono text-stone-900">
+            {part04Passed} / {part04Tests.length}
           </span>
         </div>
-        <div className="p-3 bg-white rounded-lg border border-stone-200 shadow-2xs">
+        <div className="p-2.5 bg-white rounded-lg border border-stone-200 shadow-2xs">
           <span className="text-stone-500 block mb-0.5">Part 03 POS</span>
-          <span className="text-lg font-bold font-mono text-stone-900">
-            {part03Passed} / {part03Tests.length} Passed
+          <span className="text-base font-bold font-mono text-stone-900">
+            {part03Passed} / {part03Tests.length}
           </span>
         </div>
-        <div className="p-3 bg-white rounded-lg border border-stone-200 shadow-2xs">
+        <div className="p-2.5 bg-white rounded-lg border border-stone-200 shadow-2xs">
           <span className="text-stone-500 block mb-0.5">Part 02 Stock</span>
-          <span className="text-lg font-bold font-mono text-stone-900">
-            {part02Passed} / {part02Tests.length} Passed
+          <span className="text-base font-bold font-mono text-stone-900">
+            {part02Passed} / {part02Tests.length}
           </span>
         </div>
-        <div className="p-3 bg-white rounded-lg border border-stone-200 shadow-2xs">
+        <div className="p-2.5 bg-white rounded-lg border border-stone-200 shadow-2xs">
           <span className="text-stone-500 block mb-0.5">Part 01.5 Arch</span>
-          <span className="text-lg font-bold font-mono text-stone-900">
-            {foundationPassed} / {foundationTests.length} Passed
+          <span className="text-base font-bold font-mono text-stone-900">
+            {foundationPassed} / {foundationTests.length}
           </span>
         </div>
       </div>
@@ -180,7 +208,33 @@ export const VerificationAuditSuite: React.FC = () => {
               : 'bg-white text-stone-700 hover:bg-stone-50 border border-stone-200'
           }`}
         >
-          All Test Suites ({totalTestsCount})
+          All Suites ({totalTestsCount})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSuiteTab('PART_08')}
+          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+            activeSuiteTab === 'PART_08'
+              ? 'bg-stone-900 text-white shadow-2xs'
+              : 'bg-white text-stone-700 hover:bg-stone-50 border border-stone-200'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Part 08: Hardening &amp; Audit ({part08Passed}/{part08Tests.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSuiteTab('PART_07')}
+          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+            activeSuiteTab === 'PART_07'
+              ? 'bg-stone-900 text-white shadow-2xs'
+              : 'bg-white text-stone-700 hover:bg-stone-50 border border-stone-200'
+          }`}
+        >
+          <Receipt className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Part 07: Retail Modules ({part07Passed}/{part07Tests.length})</span>
         </button>
 
         <button
@@ -193,7 +247,7 @@ export const VerificationAuditSuite: React.FC = () => {
           }`}
         >
           <ClipboardCheck className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Part 06: Advanced Inventory ({part06Passed}/{part06Tests.length} Tests 6.1&ndash;6.38)</span>
+          <span>Part 06: Advanced Inventory ({part06Passed}/{part06Tests.length})</span>
         </button>
 
         <button
@@ -206,7 +260,7 @@ export const VerificationAuditSuite: React.FC = () => {
           }`}
         >
           <Truck className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Part 05: Purchasing &amp; Suppliers ({part05Passed}/{part05Tests.length} Tests A&ndash;AL)</span>
+          <span>Part 05: Purchasing ({part05Passed}/{part05Tests.length})</span>
         </button>
 
         <button
@@ -219,7 +273,7 @@ export const VerificationAuditSuite: React.FC = () => {
           }`}
         >
           <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Part 04: Sales &amp; Profit Reports ({part04Passed}/{part04Tests.length} Tests A&ndash;I)</span>
+          <span>Part 04: Reports ({part04Passed}/{part04Tests.length})</span>
         </button>
 
         <button
@@ -232,7 +286,7 @@ export const VerificationAuditSuite: React.FC = () => {
           }`}
         >
           <ShoppingCart className="w-3.5 h-3.5 text-stone-500" />
-          <span>Part 03: POS Checkout ({part03Passed}/{part03Tests.length} Tests A&ndash;AJ)</span>
+          <span>Part 03: POS ({part03Passed}/{part03Tests.length})</span>
         </button>
 
         <button
@@ -245,7 +299,7 @@ export const VerificationAuditSuite: React.FC = () => {
           }`}
         >
           <Boxes className="w-3.5 h-3.5 text-stone-500" />
-          <span>Part 02: Product &amp; Stock ({part02Passed}/{part02Tests.length} Tests A&ndash;U)</span>
+          <span>Part 02: Stock ({part02Passed}/{part02Tests.length})</span>
         </button>
 
         <button
@@ -258,12 +312,166 @@ export const VerificationAuditSuite: React.FC = () => {
           }`}
         >
           <Package className="w-3.5 h-3.5 text-stone-500" />
-          <span>Part 01.5: Foundation ({foundationPassed}/{foundationTests.length} Tests 01&ndash;21)</span>
+          <span>Part 01.5: Arch ({foundationPassed}/{foundationTests.length})</span>
         </button>
       </div>
 
       {/* Test List Container */}
       <div className="divide-y divide-stone-200">
+        {/* PART 08 HARDENING MASTER TESTS */}
+        {(activeSuiteTab === 'ALL' || activeSuiteTab === 'PART_08') && (
+          <div>
+            <div className="bg-stone-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-stone-700 border-b border-stone-200 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Part 08: Production Hardening, Audit &amp; Recovery (TEST A &ndash; AG)</span>
+              </span>
+              <span className="text-emerald-700 font-mono font-semibold">
+                {part08Passed} / {part08Tests.length} Passed
+              </span>
+            </div>
+
+            <div className="divide-y divide-stone-100">
+              {part08Tests.map((t) => {
+                const isExpanded = expandedId === `p8-${t.code}`;
+                return (
+                  <div key={t.code} className="p-3.5 hover:bg-stone-50/70 transition">
+                    <div
+                      className="flex items-start justify-between gap-3 cursor-pointer select-none"
+                      onClick={() => setExpandedId(isExpanded ? null : `p8-${t.code}`)}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <span className={`inline-flex items-center justify-center font-mono font-bold text-[11px] px-2 py-0.5 rounded border shrink-0 mt-0.5 ${
+                          t.passed
+                            ? 'bg-emerald-100 text-emerald-900 border-emerald-200'
+                            : 'bg-rose-100 text-rose-900 border-rose-200'
+                        }`}>
+                          {t.code}
+                        </span>
+                        <div>
+                          <h4 className="text-xs font-bold text-stone-900 flex items-center gap-2">
+                            <span>{t.name}</span>
+                            <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-stone-100 text-stone-500">
+                              {t.category}
+                            </span>
+                          </h4>
+                          <p className="mt-1 text-xs text-stone-600">
+                            {t.message}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border inline-flex items-center gap-1 ${
+                          t.passed
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : 'bg-rose-50 text-rose-800 border-rose-200'
+                        }`}>
+                          {t.passed ? (
+                            <>
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              <span>PASSED</span>
+                            </>
+                          ) : (
+                            <>
+                              <AlertTriangle className="w-3 h-3 text-rose-600" />
+                              <span>FAILED</span>
+                            </>
+                          )}
+                        </span>
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-stone-400" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-stone-400" />
+                        )}
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="mt-3 pt-3 border-t border-stone-100 text-xs text-stone-600 space-y-1.5 pl-9">
+                        <div>
+                          <strong className="text-stone-700">Audit Category:</strong> {t.category}
+                        </div>
+                        <div>
+                          <strong className="text-stone-700">Verification Assertion:</strong>{' '}
+                          <span className="font-mono text-emerald-700">{t.message}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* PART 07 TESTS */}
+        {(activeSuiteTab === 'ALL' || activeSuiteTab === 'PART_07') && (
+          <div>
+            <div className="bg-stone-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-stone-700 border-b border-stone-200 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Receipt className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Part 07: Optional Retail Modules (TEST 7.1 &ndash; TEST 7.6)</span>
+              </span>
+              <span className="text-emerald-700 font-mono font-semibold">
+                {part07Passed} / {part07Tests.length} Passed
+              </span>
+            </div>
+
+            <div className="divide-y divide-stone-100">
+              {part07Tests.map((t) => {
+                const isExpanded = expandedId === `p7-${t.code}`;
+                return (
+                  <div key={t.code} className="p-3.5 hover:bg-stone-50/70 transition">
+                    <div
+                      className="flex items-start justify-between gap-3 cursor-pointer select-none"
+                      onClick={() => setExpandedId(isExpanded ? null : `p7-${t.code}`)}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <span className="inline-flex items-center justify-center font-mono font-bold text-[11px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-200 shrink-0 mt-0.5">
+                          {t.code}
+                        </span>
+                        <div>
+                          <h4 className="text-xs font-bold text-stone-900 flex items-center gap-2">
+                            <span>{t.title}</span>
+                            <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-stone-100 text-stone-500">
+                              {t.category}
+                            </span>
+                          </h4>
+                          <div className="mt-1 text-xs text-stone-600">{t.details}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-emerald-50 text-emerald-800 border-emerald-200 inline-flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          <span>{t.status}</span>
+                        </span>
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-stone-400" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-stone-400" />
+                        )}
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="mt-3 pt-3 border-t border-stone-100 text-xs text-stone-600 space-y-1.5 pl-9">
+                        <div>
+                          <strong className="text-stone-700">Expected:</strong> {t.expected}
+                        </div>
+                        <div>
+                          <strong className="text-stone-700">Actual:</strong>{' '}
+                          <span className="font-mono text-emerald-700">{t.actual}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {/* PART 06 TESTS */}
         {(activeSuiteTab === 'ALL' || activeSuiteTab === 'PART_06') && (
           <div>

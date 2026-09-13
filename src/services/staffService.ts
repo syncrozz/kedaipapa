@@ -19,6 +19,7 @@ export const VALID_STAFF_ROLES: StaffRole[] = [
 
 export interface CreateStaffInput {
   userCode?: string;
+  staffCode?: string;
   name: string;
   role: StaffRole;
   active?: boolean;
@@ -26,6 +27,7 @@ export interface CreateStaffInput {
 
 export interface UpdateStaffInput {
   userCode?: string;
+  staffCode?: string;
   name?: string;
   role?: StaffRole;
   active?: boolean;
@@ -38,8 +40,10 @@ export class StaffService {
   public static generateUserCode(existingStaff: StaffUser[]): string {
     let nextNum = 1;
     for (const s of existingStaff) {
-      if (!s || !s.userCode) continue;
-      const match = s.userCode.match(/STF[-_]?(\d+)/i);
+      if (!s) continue;
+      const codeToMatch = s.userCode || s.staffCode;
+      if (!codeToMatch) continue;
+      const match = codeToMatch.match(/STF[-_]?(\d+)/i);
       if (match) {
         const num = parseInt(match[1], 10);
         if (!isNaN(num) && num >= nextNum) {
@@ -48,6 +52,10 @@ export class StaffService {
       }
     }
     return `STF-${String(nextNum).padStart(3, '0')}`;
+  }
+
+  public static generateNextStaffCode(existingStaff: StaffUser[]): string {
+    return this.generateUserCode(existingStaff);
   }
 
   /**
@@ -61,7 +69,10 @@ export class StaffService {
     const normalized = code.trim().toUpperCase();
     if (!normalized) return false;
     return !existingStaff.some(
-      (s) => s.id !== excludeId && s.userCode.trim().toUpperCase() === normalized
+      (s) =>
+        s.id !== excludeId &&
+        ((s.userCode && s.userCode.trim().toUpperCase() === normalized) ||
+          (s.staffCode && s.staffCode.trim().toUpperCase() === normalized))
     );
   }
 
@@ -81,7 +92,7 @@ export class StaffService {
       throw new Error(`Invalid role "${input.role}". Allowed roles: ${VALID_STAFF_ROLES.join(', ')}.`);
     }
 
-    let code = input.userCode?.trim().toUpperCase();
+    let code = (input.staffCode || input.userCode)?.trim().toUpperCase();
     if (!code) {
       code = this.generateUserCode(existingStaff);
     } else {
@@ -94,6 +105,7 @@ export class StaffService {
     return {
       id: `stf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       userCode: code,
+      staffCode: code,
       name: trimmedName,
       role: input.role,
       active: input.active ?? true,
@@ -128,21 +140,24 @@ export class StaffService {
       }
     }
 
-    if (updates.userCode !== undefined) {
-      const trimmed = updates.userCode.trim().toUpperCase();
-      if (!trimmed) {
+    const newCode = (updates.staffCode || updates.userCode)?.trim().toUpperCase();
+    if (newCode !== undefined) {
+      if (!newCode) {
         throw new Error('Staff code cannot be empty.');
       }
-      if (!this.isUserCodeUnique(trimmed, existingStaff, staffId)) {
-        throw new Error(`Staff code "${trimmed}" is already in use.`);
+      if (!this.isUserCodeUnique(newCode, existingStaff, staffId)) {
+        throw new Error(`Staff code "${newCode}" is already in use.`);
       }
     }
+
+    const resolvedCode = newCode !== undefined ? newCode : (target.userCode || target.staffCode || '');
 
     return {
       ...target,
       name: updates.name !== undefined ? updates.name.trim() : target.name,
       role: updates.role !== undefined ? updates.role : target.role,
-      userCode: updates.userCode !== undefined ? updates.userCode.trim().toUpperCase() : target.userCode,
+      userCode: resolvedCode,
+      staffCode: resolvedCode,
       active: updates.active !== undefined ? updates.active : target.active,
       updatedAt: new Date().toISOString(),
     };
@@ -153,5 +168,9 @@ export class StaffService {
    */
   public static getActiveStaff(staff: StaffUser[]): StaffUser[] {
     return staff.filter((s) => s.active);
+  }
+
+  public static getActiveStaffMembers(staff: StaffUser[]): StaffUser[] {
+    return this.getActiveStaff(staff);
   }
 }

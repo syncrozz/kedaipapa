@@ -19,12 +19,18 @@ import {
   AlertTriangle,
   Receipt,
   X,
+  Download,
+  SearchCheck,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { Supplier, Purchase } from '../types';
 import { formatCurrency, formatDateTime } from '../services/formatters';
 import { PurchasingService } from '../services/purchasingService';
 import { SupplierService } from '../services/supplierService';
+import { CsvService } from '../services/csvService';
+import { DuplicateAuditService } from '../services/duplicateAuditService';
+import { SmartInputService } from '../services/smartInputService';
+import { DuplicateAuditModal } from '../components/common/DuplicateAuditModal';
 
 export const SuppliersPage: React.FC = () => {
   const {
@@ -35,6 +41,8 @@ export const SuppliersPage: React.FC = () => {
     updateSupplier,
     toggleSupplierActive,
     deleteSupplier,
+    isAdminMode,
+    requireAdmin,
   } = useStore();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,6 +52,13 @@ export const SuppliersPage: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [selectedSupplierForDetail, setSelectedSupplierForDetail] = useState<Supplier | null>(null);
+  const [isDuplicateAuditOpen, setIsDuplicateAuditOpen] = useState(false);
+
+  // Duplicate audit groups (SES 4.4 Locked Part E)
+  const duplicateAuditGroups = useMemo(
+    () => DuplicateAuditService.auditSuppliers(suppliers),
+    [suppliers]
+  );
 
   // Form State
   const [formCode, setFormCode] = useState('');
@@ -110,32 +125,67 @@ export const SuppliersPage: React.FC = () => {
     setFormError(null);
   };
 
+  const handleAddClick = () => {
+    requireAdmin(openAddModal, 'Tambah Pembekal Baru');
+  };
+
+  const handleEditClick = (supplier: Supplier) => {
+    requireAdmin(() => openEditModal(supplier), `Kemaskini Pembekal ${supplier.supplierName}`);
+  };
+
+  const handleToggleClick = (supplier: Supplier) => {
+    requireAdmin(() => toggleSupplierActive(supplier.id), `Tukar Status Pembekal ${supplier.supplierName}`);
+  };
+
+  const handleDeleteClick = (supplier: Supplier) => {
+    requireAdmin(() => handleDelete(supplier), `Padam Pembekal ${supplier.supplierName}`);
+  };
+
+  const handleExportCsvClick = () => {
+    CsvService.exportSuppliers(filteredSuppliers);
+  };
+
   const handleSaveSupplier = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
+    // Smart Form input normalization (SES 4.4 Locked Part B)
+    const normName = SmartInputService.normalizeName(formName);
+    const normCode = SmartInputService.normalizeCode(formCode);
+    const normContact = SmartInputService.normalizeName(formContact);
+    const normPhone = SmartInputService.normalizePhone(formPhone);
+
+    if (!normName) {
+      setFormError('Nama pembekal tidak boleh kosong.');
+      return;
+    }
+    if (!normCode) {
+      setFormError('Kod pembekal tidak boleh kosong.');
+      return;
+    }
+
     try {
       if (editingSupplier) {
         updateSupplier(editingSupplier.id, {
-          supplierCode: formCode,
-          supplierName: formName,
-          contactPerson: formContact,
-          phone: formPhone,
-          email: formEmail,
-          address: formAddress,
-          notes: formNotes,
+          supplierCode: normCode,
+          supplierName: normName,
+          contactPerson: normContact,
+          phone: normPhone,
+          email: formEmail.trim(),
+          address: formAddress.trim(),
+          notes: formNotes.trim(),
           active: formActive,
         });
         setEditingSupplier(null);
       } else {
         addSupplier({
-          supplierCode: formCode,
-          supplierName: formName,
-          contactPerson: formContact,
-          phone: formPhone,
-          email: formEmail,
-          address: formAddress,
-          notes: formNotes,
+          supplierCode: normCode,
+          supplierName: normName,
+          contactPerson: normContact,
+          phone: normPhone,
+          email: formEmail.trim(),
+          address: formAddress.trim(),
+          notes: formNotes.trim(),
         });
         setIsAddModalOpen(false);
       }
@@ -170,15 +220,46 @@ export const SuppliersPage: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          id="btn-add-supplier"
-          onClick={openAddModal}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium transition shadow-xs cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Supplier</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Duplicate Audit Button (SES 4.4 Locked Part E) */}
+          <button
+            type="button"
+            id="audit-suppliers-btn"
+            onClick={() => setIsDuplicateAuditOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200 bg-white text-stone-700 text-xs sm:text-sm font-medium hover:bg-stone-50 transition shadow-2xs cursor-pointer"
+            title="Semak pertindihan nama atau kod pembekal"
+          >
+            <SearchCheck className="w-4 h-4 text-stone-600" />
+            <span>Audit Duplikasi</span>
+            {duplicateAuditGroups.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold">
+                {duplicateAuditGroups.length}
+              </span>
+            )}
+          </button>
+
+          {/* Export CSV Button (SES 4.4 Locked Part D) */}
+          <button
+            type="button"
+            id="export-suppliers-csv-btn"
+            onClick={handleExportCsvClick}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200 bg-white text-stone-700 text-xs sm:text-sm font-medium hover:bg-stone-50 transition shadow-2xs cursor-pointer"
+            title="Eksport senarai pembekal semasa ke fail CSV"
+          >
+            <Download className="w-4 h-4 text-stone-600" />
+            <span>Export CSV</span>
+          </button>
+
+          <button
+            type="button"
+            id="btn-add-supplier"
+            onClick={handleAddClick}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium transition shadow-xs cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Supplier</span>
+          </button>
+        </div>
       </div>
 
       {/* Notice Banner if delete redirected to deactivation */}
@@ -361,17 +442,17 @@ export const SuppliersPage: React.FC = () => {
                           </button>
                           <button
                             type="button"
-                            title="Edit Supplier"
-                            onClick={() => openEditModal(supplier)}
-                            className="p-1.5 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition"
+                            title="Edit Supplier (Admin PIN required)"
+                            onClick={() => handleEditClick(supplier)}
+                            className="p-1.5 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition cursor-pointer"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
                             type="button"
-                            title={supplier.active ? 'Deactivate Supplier' : 'Activate Supplier'}
-                            onClick={() => toggleSupplierActive(supplier.id)}
-                            className={`px-2 py-1 text-xs font-medium rounded-lg border transition ${
+                            title={supplier.active ? 'Deactivate Supplier (Admin PIN required)' : 'Activate Supplier (Admin PIN required)'}
+                            onClick={() => handleToggleClick(supplier)}
+                            className={`px-2 py-1 text-xs font-medium rounded-lg border transition cursor-pointer ${
                               supplier.active
                                 ? 'border-amber-200 text-amber-700 hover:bg-amber-50'
                                 : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
@@ -752,6 +833,14 @@ export const SuppliersPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Duplicate Audit Modal (SES 4.4 Locked Part E) */}
+      <DuplicateAuditModal
+        isOpen={isDuplicateAuditOpen}
+        onClose={() => setIsDuplicateAuditOpen(false)}
+        auditGroups={duplicateAuditGroups}
+        entityType="Pembekal"
+      />
     </div>
   );
 };

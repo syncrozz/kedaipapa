@@ -32,9 +32,12 @@ export interface UpdateCustomerInput {
 
 export interface CustomerMetrics {
   totalTransactions: number;
+  totalOrders: number;
   totalSpent: number; // Actual realized sales revenue (sale.total, after discount)
+  totalSpend: number;
   itemsPurchased: number;
   lastPurchaseDate: string | null;
+  lastOrderDate?: string;
   completedSales: Sale[];
   pointsBalance: number;
 }
@@ -72,6 +75,18 @@ export class CustomerService {
     return !existingCustomers.some(
       (c) => c.id !== excludeId && c.customerCode.trim().toUpperCase() === normalized
     );
+  }
+
+  public static generateNextCustomerCode(existingCustomers: Customer[]): string {
+    return this.generateCustomerCode(existingCustomers);
+  }
+
+  public static isCustomerCodeAvailable(
+    code: string,
+    existingCustomers: Customer[],
+    excludeId?: string
+  ): boolean {
+    return this.isCustomerCodeUnique(code, existingCustomers, excludeId);
   }
 
   /**
@@ -172,6 +187,37 @@ export class CustomerService {
   }
 
   /**
+   * Deletes or deactivates customer based on sales history.
+   */
+  public static deleteCustomer(
+    customerId: string,
+    existingCustomers: Customer[],
+    sales: Sale[]
+  ): {
+    updatedCustomers: Customer[];
+    deactivatedInsteadOfDeleted: boolean;
+    message: string;
+  } {
+    const hasSales = sales.some((s) => s.customerId === customerId);
+    if (hasSales) {
+      const updatedCustomers = existingCustomers.map((c) =>
+        c.id === customerId ? { ...c, active: false, updatedAt: new Date().toISOString() } : c
+      );
+      return {
+        updatedCustomers,
+        deactivatedInsteadOfDeleted: true,
+        message: 'Customer has sales history and cannot be deleted. Deactivated instead.',
+      };
+    }
+
+    return {
+      updatedCustomers: existingCustomers.filter((c) => c.id !== customerId),
+      deactivatedInsteadOfDeleted: false,
+      message: 'Customer permanently deleted.',
+    };
+  }
+
+  /**
    * Filters active customers suitable for new transactions.
    */
   public static getActiveCustomers(customers: Customer[]): Customer[] {
@@ -197,22 +243,15 @@ export class CustomerService {
     });
   }
 
-  /**
-   * Computes comprehensive customer metrics derived purely from COMPLETED sales:
-   * - Total Transactions
-   * - Total Realized Spend (sum of sale.total, discounts reflected, not original subtotal)
-   * - Items Purchased
-   * - Last Purchase Date
-   * - Loyalty Points Balance
-   */
-  public static getCustomerMetrics(
-    customer: Customer,
+  public static calculateCustomerMetrics(
+    customerOrId: Customer | string,
     sales: Sale[],
     loyaltyEntries: LoyaltyLedgerEntry[] = []
   ): CustomerMetrics {
+    const customerId = typeof customerOrId === 'string' ? customerOrId : customerOrId.id;
     // Only completed sales count towards customer metrics
     const completedSales = sales
-      .filter((s) => s.customerId === customer.id && s.status === 'COMPLETED')
+      .filter((s) => s.customerId === customerId && s.status === 'COMPLETED')
       .sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime());
 
     let totalSpent = 0;
@@ -227,16 +266,38 @@ export class CustomerService {
 
     // Points balance from ledger
     const pointsBalance = loyaltyEntries
-      .filter((e) => e.customerId === customer.id)
+      .filter((e) => e.customerId === customerId)
       .reduce((sum, e) => sum + e.points, 0);
+
+    const spend = Number(totalSpent.toFixed(2));
+    const lastDate = completedSales.length > 0 ? completedSales[0].dateTime : null;
 
     return {
       totalTransactions: completedSales.length,
-      totalSpent: Number(totalSpent.toFixed(2)),
+      totalOrders: completedSales.length,
+      totalSpent: spend,
+      totalSpend: spend,
       itemsPurchased,
-      lastPurchaseDate: completedSales.length > 0 ? completedSales[0].dateTime : null,
+      lastPurchaseDate: lastDate,
+      lastOrderDate: lastDate || undefined,
       completedSales,
       pointsBalance: Math.max(0, pointsBalance),
     };
+  }
+
+  /**
+   * Computes comprehensive customer metrics derived purely from COMPLETED sales:
+   * - Total Transactions
+   * - Total Realized Spend (sum of sale.total, discounts reflected, not original subtotal)
+   * - Items Purchased
+   * - Last Purchase Date
+   * - Loyalty Points Balance
+   */
+  public static getCustomerMetrics(
+    customer: Customer,
+    sales: Sale[],
+    loyaltyEntries: LoyaltyLedgerEntry[] = []
+  ): CustomerMetrics {
+    return this.calculateCustomerMetrics(customer, sales, loyaltyEntries);
   }
 }

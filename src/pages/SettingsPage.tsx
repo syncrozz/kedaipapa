@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Settings,
   Store,
@@ -14,11 +14,17 @@ import {
   Edit2,
   X,
   AlertTriangle,
+  Download,
+  Upload,
+  Database,
+  HardDrive,
+  FileCheck,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { UserRole, StaffRole, StaffUser } from '../types';
 import { VerificationAuditSuite } from '../components/verification/VerificationAuditSuite';
 import { StaffService } from '../services/staffService';
+import { StorageService, StoreBackupPayload } from '../services/storageService';
 
 export const SettingsPage: React.FC = () => {
   const {
@@ -30,6 +36,15 @@ export const SettingsPage: React.FC = () => {
     addStaff,
     updateStaff,
     toggleStaffActive,
+    products,
+    movements,
+    sales,
+    suppliers,
+    purchases,
+    customers,
+    loyaltyLedger,
+    downloadBackup,
+    restoreStoreData,
   } = useStore();
 
   // Store Profile State
@@ -48,6 +63,12 @@ export const SettingsPage: React.FC = () => {
   const [loyaltyPointsPerCurrency, setLoyaltyPointsPerCurrency] = useState(store.settings?.loyaltyPointsPerCurrency || 1);
   const [enableStaff, setEnableStaff] = useState(store.settings?.enableStaff !== false);
   const [moduleSettingsSuccess, setModuleSettingsSuccess] = useState(false);
+
+  // Backup & Restore State
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [restoreConfirmPayload, setRestoreConfirmPayload] = useState<StoreBackupPayload | null>(null);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   // Staff Modal State
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
@@ -86,6 +107,82 @@ export const SettingsPage: React.FC = () => {
     });
     setModuleSettingsSuccess(true);
     setTimeout(() => setModuleSettingsSuccess(false), 3000);
+  };
+
+  const handleDownloadBackup = () => {
+    try {
+      downloadBackup();
+      setBackupMessage({
+        type: 'success',
+        text: `Authoritative backup generated & downloaded successfully (${products.length} products, ${sales.length} sales).`,
+      });
+      setTimeout(() => setBackupMessage(null), 5000);
+    } catch (err: any) {
+      setBackupMessage({ type: 'error', text: `Failed to download backup: ${err.message}` });
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+        const validation = StorageService.validateBackupPayload(parsed);
+
+        if (!validation.isValid || !validation.data) {
+          setBackupMessage({
+            type: 'error',
+            text: `Invalid backup file: ${validation.error || 'Verification failed.'}`,
+          });
+          return;
+        }
+
+        setRestoreConfirmPayload(validation.data);
+        setBackupMessage(null);
+      } catch (err: any) {
+        setBackupMessage({
+          type: 'error',
+          text: `Corrupted JSON file: ${err.message}`,
+        });
+      } finally {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleConfirmRestore = () => {
+    if (!restoreConfirmPayload) return;
+    const result = restoreStoreData(restoreConfirmPayload);
+    if (result.success) {
+      setBackupMessage({
+        type: 'success',
+        text: `Store successfully restored from backup (${restoreConfirmPayload.products.length} products, ${restoreConfirmPayload.sales.length} sales restored).`,
+      });
+      setRestoreConfirmPayload(null);
+      setTimeout(() => setBackupMessage(null), 6000);
+    } else {
+      setBackupMessage({
+        type: 'error',
+        text: `Restore error: ${result.message}`,
+      });
+    }
+  };
+
+  const handleConfirmReset = () => {
+    resetToDemo();
+    setIsResetModalOpen(false);
+    setBackupMessage({
+      type: 'success',
+      text: 'Store data reset to official Kedai PAPA pilot seed records.',
+    });
+    setTimeout(() => setBackupMessage(null), 4000);
   };
 
   const handleOpenAddStaff = () => {
@@ -569,6 +666,99 @@ export const SettingsPage: React.FC = () => {
         </div>
       )}
 
+      {/* Disaster Recovery & Data Backup Card */}
+      <div className="bg-white rounded-xl border border-stone-200 p-6 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-stone-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <Database className="w-5 h-5 text-emerald-800" />
+              <h3 className="font-bold text-sm text-stone-900">
+                Store Data Backup &amp; Disaster Recovery
+              </h3>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                Schema v1 · LocalStorage
+              </span>
+            </div>
+            <p className="text-xs text-stone-500 mt-1 max-w-xl">
+              Export an authoritative JSON snapshot of your entire retail database (products, sales history, inventory ledger, supplier records, and audit logs). Restore anytime to recover from hardware failure or data corruption.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDownloadBackup}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white transition shadow-xs cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download Backup (JSON)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-white border border-stone-300 text-stone-700 hover:bg-stone-50 transition cursor-pointer"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>Restore Backup</span>
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept=".json,application/json"
+              className="hidden"
+            />
+          </div>
+        </div>
+
+        {/* Status / Alert Banner */}
+        {backupMessage && (
+          <div
+            className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 ${
+              backupMessage.type === 'success'
+                ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                : 'bg-rose-50 text-rose-900 border border-rose-200'
+            }`}
+          >
+            {backupMessage.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span>{backupMessage.text}</span>
+          </div>
+        )}
+
+        {/* Database Inventory Matrix */}
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-center text-xs">
+          <div className="p-2.5 rounded-lg bg-stone-50 border border-stone-200/80">
+            <span className="text-stone-500 block text-[11px]">Products</span>
+            <span className="font-bold text-stone-900 font-mono text-sm">{products.length}</span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-stone-50 border border-stone-200/80">
+            <span className="text-stone-500 block text-[11px]">Movements</span>
+            <span className="font-bold text-stone-900 font-mono text-sm">{movements.length}</span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-stone-50 border border-stone-200/80">
+            <span className="text-stone-500 block text-[11px]">Sales</span>
+            <span className="font-bold text-stone-900 font-mono text-sm">{sales.length}</span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-stone-50 border border-stone-200/80">
+            <span className="text-stone-500 block text-[11px]">Purchases</span>
+            <span className="font-bold text-stone-900 font-mono text-sm">{purchases.length}</span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-stone-50 border border-stone-200/80">
+            <span className="text-stone-500 block text-[11px]">Suppliers</span>
+            <span className="font-bold text-stone-900 font-mono text-sm">{suppliers.length}</span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-stone-50 border border-stone-200/80">
+            <span className="text-stone-500 block text-[11px]">Customers</span>
+            <span className="font-bold text-stone-900 font-mono text-sm">{customers.length}</span>
+          </div>
+        </div>
+      </div>
+
       {/* Regression & Verification Testing Suite */}
       <VerificationAuditSuite />
 
@@ -576,7 +766,7 @@ export const SettingsPage: React.FC = () => {
       <div className="bg-white rounded-xl border border-stone-200 p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h3 className="font-bold text-sm text-stone-900">
-            Demo Data & State Reset
+            Demo Data &amp; State Reset
           </h3>
           <p className="text-xs text-stone-500 max-w-md mt-0.5">
             Reset all product records, inventory movements, sales, customers, and loyalty back to the initial Kedai PAPA pilot baseline.
@@ -585,13 +775,89 @@ export const SettingsPage: React.FC = () => {
 
         <button
           type="button"
-          onClick={resetToDemo}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-stone-100 text-stone-800 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 border border-stone-200 transition"
+          onClick={() => setIsResetModalOpen(true)}
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-stone-100 text-stone-800 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 border border-stone-200 transition cursor-pointer"
         >
           <RotateCcw className="w-3.5 h-3.5" />
           <span>Reset to Pilot Seed Data</span>
         </button>
       </div>
+
+      {/* Restore Confirmation Modal */}
+      {restoreConfirmPayload && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-stone-200 p-6 max-w-md w-full shadow-lg">
+            <div className="flex items-center gap-2 mb-3 text-amber-600">
+              <AlertTriangle className="w-5 h-5" />
+              <h3 className="font-bold text-base text-stone-900">Confirm Store Data Restore</h3>
+            </div>
+            <p className="text-xs text-stone-600 mb-4">
+              You are about to overwrite your active store records with the backup file from{' '}
+              <span className="font-semibold text-stone-800">
+                {new Date(restoreConfirmPayload.exportedAt).toLocaleString()}
+              </span>
+              . Current unsaved edits will be replaced.
+            </p>
+
+            <div className="bg-stone-50 p-3 rounded-lg border border-stone-200 text-xs mb-4 space-y-1">
+              <div><strong className="text-stone-700">Store Name:</strong> {restoreConfirmPayload.store.name} ({restoreConfirmPayload.store.code})</div>
+              <div><strong className="text-stone-700">Schema Version:</strong> v{restoreConfirmPayload.schemaVersion}</div>
+              <div><strong className="text-stone-700">Products:</strong> {restoreConfirmPayload.products.length} records</div>
+              <div><strong className="text-stone-700">Sales Transactions:</strong> {restoreConfirmPayload.sales.length} records</div>
+              <div><strong className="text-stone-700">Stock Movements:</strong> {restoreConfirmPayload.movements.length} records</div>
+              <div><strong className="text-stone-700">Purchases:</strong> {restoreConfirmPayload.purchases.length} records</div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRestoreConfirmPayload(null)}
+                className="px-3.5 py-1.5 text-xs font-semibold rounded-lg border border-stone-300 text-stone-700 hover:bg-stone-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRestore}
+                className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-emerald-800 text-white hover:bg-emerald-900 shadow-xs cursor-pointer"
+              >
+                Confirm Restore
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Safe Reset Confirmation Modal */}
+      {isResetModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-stone-200 p-6 max-w-md w-full shadow-lg">
+            <div className="flex items-center gap-2 mb-3 text-rose-600">
+              <AlertTriangle className="w-5 h-5" />
+              <h3 className="font-bold text-base text-stone-900">Reset to Pilot Seed Data?</h3>
+            </div>
+            <p className="text-xs text-stone-600 mb-4">
+              This action will purge current operational records and reload the baseline sample inventory, pilot sales, and supplier seed records.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsResetModalOpen(false)}
+                className="px-3.5 py-1.5 text-xs font-semibold rounded-lg border border-stone-300 text-stone-700 hover:bg-stone-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReset}
+                className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-rose-700 text-white hover:bg-rose-800 shadow-xs cursor-pointer"
+              >
+                Confirm Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

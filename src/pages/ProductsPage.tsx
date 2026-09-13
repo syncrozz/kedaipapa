@@ -20,6 +20,10 @@ import {
   Sparkles,
   History,
   ShieldCheck,
+  Download,
+  UploadCloud,
+  FileSpreadsheet,
+  SearchCheck,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { Product, StockStatus } from '../types';
@@ -29,6 +33,11 @@ import { EmptyState } from '../components/common/EmptyState';
 import { InventoryService } from '../services/inventoryService';
 import { PurchasingService } from '../services/purchasingService';
 import { formatCurrency, formatDateTime } from '../services/formatters';
+import { CsvService } from '../services/csvService';
+import { DuplicateAuditService, DuplicateAuditGroup } from '../services/duplicateAuditService';
+import { SmartInputService } from '../services/smartInputService';
+import { CsvImportModal } from '../components/common/CsvImportModal';
+import { DuplicateAuditModal } from '../components/common/DuplicateAuditModal';
 
 export const ProductsPage: React.FC = () => {
   const {
@@ -36,10 +45,13 @@ export const ProductsPage: React.FC = () => {
     products,
     purchases,
     addProduct,
+    importProducts,
     updateProduct,
     toggleProductActive,
     deleteProduct,
     isSkuAvailable,
+    isAdminMode,
+    requireAdmin,
   } = useStore();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -52,6 +64,14 @@ export const ProductsPage: React.FC = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [selectedProductForHistory, setSelectedProductForHistory] = useState<Product | null>(null);
+  const [isCsvImportOpen, setIsCsvImportOpen] = useState(false);
+  const [isDuplicateAuditOpen, setIsDuplicateAuditOpen] = useState(false);
+
+  // Duplicate audit groups (SES 4.4 Locked Part E)
+  const duplicateAuditGroups = useMemo(
+    () => DuplicateAuditService.auditProducts(products),
+    [products]
+  );
 
   // Notifications / feedback
   const [notification, setNotification] = useState<{ type: 'success' | 'warning' | 'error'; message: string } | null>(null);
@@ -123,6 +143,10 @@ export const ProductsPage: React.FC = () => {
     setIsAddModalOpen(true);
   };
 
+  const handleAddClick = () => {
+    requireAdmin(openAddModal, 'Tambah Produk Baru');
+  };
+
   const openEditModal = (product: Product) => {
     setFormError(null);
     setEditingProduct(product);
@@ -139,12 +163,53 @@ export const ProductsPage: React.FC = () => {
     });
   };
 
+  const handleEditClick = (p: Product) => {
+    requireAdmin(() => openEditModal(p), `Kemaskini Produk ${p.name}`);
+  };
+
+  const handleToggleActiveClick = (p: Product) => {
+    requireAdmin(() => toggleProductActive(p.id), `Tukar Status Produk ${p.name}`);
+  };
+
+  const handleDeleteClick = (p: Product) => {
+    requireAdmin(() => setDeletingProduct(p), `Padam Produk ${p.name}`);
+  };
+
+  const handleImportCsvClick = () => {
+    requireAdmin(() => setIsCsvImportOpen(true), 'Import Produk Melalui CSV');
+  };
+
+  const handleExportCsvClick = () => {
+    CsvService.exportProducts(filteredProducts);
+    setNotification({
+      type: 'success',
+      message: `Fail CSV untuk ${filteredProducts.length} produk telah dijana dan dimuat turun.`,
+    });
+    setTimeout(() => setNotification(null), 4000);
+  };
+
+  const handleCommitCsvImport = (
+    items: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>[]
+  ) => {
+    const count = importProducts(items);
+    setNotification({
+      type: 'success',
+      message: `Berjaya mengimport ${count} produk ke dalam katalog ${store.name}.`,
+    });
+    setTimeout(() => setNotification(null), 5000);
+  };
+
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
-    const trimmedName = formData.name.trim();
-    const trimmedSku = formData.sku.trim();
+    // Smart Form input normalization (SES 4.4 Locked Part B)
+    const trimmedName = SmartInputService.normalizeName(formData.name);
+    const trimmedSku = SmartInputService.normalizeCode(formData.sku);
+    const costPrice = SmartInputService.parseNumeric(formData.costPrice);
+    const sellingPrice = SmartInputService.parseNumeric(formData.sellingPrice);
+    const currentStock = Math.max(0, Math.floor(SmartInputService.parseNumeric(formData.currentStock)));
+    const minimumStock = Math.max(0, Math.floor(SmartInputService.parseNumeric(formData.minimumStock)));
 
     if (!trimmedName) {
       setFormError('Product name cannot be empty.');
@@ -158,20 +223,12 @@ export const ProductsPage: React.FC = () => {
       setFormError(`SKU "${trimmedSku}" already exists in this store. SKU must be unique.`);
       return;
     }
-    if (Number(formData.costPrice) < 0) {
+    if (costPrice < 0) {
       setFormError('Cost price cannot be negative.');
       return;
     }
-    if (Number(formData.sellingPrice) < 0) {
+    if (sellingPrice < 0) {
       setFormError('Selling price cannot be negative.');
-      return;
-    }
-    if (Number(formData.currentStock) < 0) {
-      setFormError('Opening stock cannot be negative.');
-      return;
-    }
-    if (Number(formData.minimumStock) < 0) {
-      setFormError('Minimum stock cannot be negative.');
       return;
     }
 
@@ -180,10 +237,10 @@ export const ProductsPage: React.FC = () => {
         sku: trimmedSku,
         name: trimmedName,
         category: formData.category.trim() || 'General',
-        costPrice: Number(formData.costPrice),
-        sellingPrice: Number(formData.sellingPrice),
-        currentStock: Number(formData.currentStock),
-        minimumStock: Number(formData.minimumStock),
+        costPrice,
+        sellingPrice,
+        currentStock,
+        minimumStock,
         imageUrl: formData.imageUrl.trim() || undefined,
         active: formData.active,
       });
@@ -204,8 +261,12 @@ export const ProductsPage: React.FC = () => {
     if (!editingProduct) return;
     setFormError(null);
 
-    const trimmedName = formData.name.trim();
-    const trimmedSku = formData.sku.trim();
+    // Smart Form input normalization (SES 4.4 Locked Part B)
+    const trimmedName = SmartInputService.normalizeName(formData.name);
+    const trimmedSku = SmartInputService.normalizeCode(formData.sku);
+    const costPrice = SmartInputService.parseNumeric(formData.costPrice);
+    const sellingPrice = SmartInputService.parseNumeric(formData.sellingPrice);
+    const minimumStock = Math.max(0, Math.floor(SmartInputService.parseNumeric(formData.minimumStock)));
 
     if (!trimmedName) {
       setFormError('Product name cannot be empty.');
@@ -219,16 +280,12 @@ export const ProductsPage: React.FC = () => {
       setFormError(`SKU "${trimmedSku}" is already in use by another product in this store.`);
       return;
     }
-    if (Number(formData.costPrice) < 0) {
+    if (costPrice < 0) {
       setFormError('Cost price cannot be negative.');
       return;
     }
-    if (Number(formData.sellingPrice) < 0) {
+    if (sellingPrice < 0) {
       setFormError('Selling price cannot be negative.');
-      return;
-    }
-    if (Number(formData.minimumStock) < 0) {
-      setFormError('Minimum stock cannot be negative.');
       return;
     }
 
@@ -237,9 +294,9 @@ export const ProductsPage: React.FC = () => {
         sku: trimmedSku,
         name: trimmedName,
         category: formData.category.trim() || 'General',
-        costPrice: Number(formData.costPrice),
-        sellingPrice: Number(formData.sellingPrice),
-        minimumStock: Number(formData.minimumStock),
+        costPrice,
+        sellingPrice,
+        minimumStock,
         imageUrl: formData.imageUrl.trim() || undefined,
         active: formData.active,
       });
@@ -285,11 +342,53 @@ export const ProductsPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Duplicate Audit Button (SES 4.4 Locked Part E) */}
+          <button
+            type="button"
+            id="audit-duplicates-btn"
+            onClick={() => setIsDuplicateAuditOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200 bg-white text-stone-700 text-xs sm:text-sm font-medium hover:bg-stone-50 transition shadow-2xs cursor-pointer"
+            title="Semak pertindihan nama atau SKU produk"
+          >
+            <SearchCheck className="w-4 h-4 text-stone-600" />
+            <span>Audit Duplikasi</span>
+            {duplicateAuditGroups.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold">
+                {duplicateAuditGroups.length}
+              </span>
+            )}
+          </button>
+
+          {/* Export CSV Button (SES 4.4 Locked Part D) */}
+          <button
+            type="button"
+            id="export-products-csv-btn"
+            onClick={handleExportCsvClick}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200 bg-white text-stone-700 text-xs sm:text-sm font-medium hover:bg-stone-50 transition shadow-2xs cursor-pointer"
+            title="Eksport senarai produk semasa ke fail CSV"
+          >
+            <Download className="w-4 h-4 text-stone-600" />
+            <span>Export CSV</span>
+          </button>
+
+          {/* Import CSV Button (SES 4.4 Locked Part D: Admin Gated) */}
+          <button
+            type="button"
+            id="import-products-csv-btn"
+            onClick={handleImportCsvClick}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200 bg-white text-stone-700 text-xs sm:text-sm font-medium hover:bg-stone-50 transition shadow-2xs cursor-pointer"
+            title="Import senarai produk dari fail CSV (PIN Admin diperlukan)"
+          >
+            <UploadCloud className="w-4 h-4 text-emerald-600" />
+            <span>Import CSV</span>
+          </button>
+
+          {/* New Product Button (SES 4.4 Locked Part A: Admin Gated) */}
           <button
             type="button"
             id="add-product-btn"
-            onClick={openAddModal}
+            onClick={handleAddClick}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition shadow-2xs cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -606,7 +705,7 @@ export const ProductsPage: React.FC = () => {
                           <button
                             type="button"
                             title={p.active ? 'Deactivate product (hides from POS)' : 'Activate product for POS'}
-                            onClick={() => toggleProductActive(p.id)}
+                            onClick={() => handleToggleActiveClick(p)}
                             className={`p-1.5 rounded-md transition ${
                               p.active
                                 ? 'text-stone-400 hover:text-amber-600 hover:bg-amber-50'
@@ -628,8 +727,8 @@ export const ProductsPage: React.FC = () => {
 
                           <button
                             type="button"
-                            onClick={() => openEditModal(p)}
-                            title="Edit product details"
+                            onClick={() => handleEditClick(p)}
+                            title="Edit product details (Admin PIN required)"
                             className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-stone-700 hover:text-stone-950 bg-stone-100 hover:bg-stone-200 rounded-md transition"
                           >
                             <Edit2 className="w-3 h-3" />
@@ -638,8 +737,8 @@ export const ProductsPage: React.FC = () => {
 
                           <button
                             type="button"
-                            onClick={() => setDeletingProduct(p)}
-                            title="Safe remove or deactivate"
+                            onClick={() => handleDeleteClick(p)}
+                            title="Safe remove or deactivate (Admin PIN required)"
                             className="p-1.5 rounded-md text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1176,6 +1275,22 @@ export const ProductsPage: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* CSV Import Modal (SES 4.4 Locked Part D) */}
+      <CsvImportModal
+        isOpen={isCsvImportOpen}
+        onClose={() => setIsCsvImportOpen(false)}
+        onCommit={handleCommitCsvImport}
+        existingProducts={products}
+      />
+
+      {/* Duplicate Audit Modal (SES 4.4 Locked Part E) */}
+      <DuplicateAuditModal
+        isOpen={isDuplicateAuditOpen}
+        onClose={() => setIsDuplicateAuditOpen(false)}
+        auditGroups={duplicateAuditGroups}
+        entityType="Produk"
+      />
     </div>
   );
 };

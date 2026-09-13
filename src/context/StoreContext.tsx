@@ -16,6 +16,7 @@ import {
   Customer,
   LoyaltyLedgerEntry,
   StaffUser,
+  StoreBackupPayload,
 } from '../types';
 import {
   INITIAL_STORE,
@@ -35,6 +36,13 @@ import { PurchasingService, CreatePurchaseInput, CompletePurchaseResult } from '
 import { CustomerService, CreateCustomerInput, UpdateCustomerInput } from '../services/customerService';
 import { LoyaltyService } from '../services/loyaltyService';
 import { StaffService, CreateStaffInput, UpdateStaffInput } from '../services/staffService';
+import {
+  StorageService,
+  STORAGE_KEYS,
+  CURRENT_SCHEMA_VERSION,
+} from '../services/storageService';
+import { AdminAuthService } from '../services/adminAuthService';
+import { AdminPinModal } from '../components/common/AdminPinModal';
 
 interface StoreContextType {
   store: Store;
@@ -49,8 +57,17 @@ interface StoreContextType {
   staffUsers: StaffUser[];
   activeStaff: StaffUser | null;
   isLoading: boolean;
+  // Admin Mode Controls (Part A & Part J)
+  isAdminMode: boolean;
+  isPinModalOpen: boolean;
+  openPinModal: (description?: string, onApproved?: () => void) => void;
+  closePinModal: () => void;
+  enterAdminMode: (pin: string) => { success: boolean; error?: string };
+  exitAdminMode: () => void;
+  requireAdmin: (action: () => void, description?: string) => void;
   // Core Domain Operations
   addProduct: (newProduct: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>) => Product;
+  importProducts: (newProducts: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>[]) => number;
   updateProduct: (id: string, updates: Partial<Product>) => Product;
   toggleProductActive: (id: string) => void;
   deleteProduct: (id: string) => { success: boolean; message: string };
@@ -87,29 +104,30 @@ interface StoreContextType {
   setActiveStaff: (staff: StaffUser | null) => void;
   resetToDemo: () => void;
   updateStoreDetails: (details: Partial<Store>) => void;
+  // Backup & Recovery Operations (Part 08)
+  exportStoreData: () => StoreBackupPayload;
+  downloadBackup: () => void;
+  restoreStoreData: (payload: StoreBackupPayload) => { success: boolean; message: string };
 }
-
-const STORAGE_KEYS = {
-  STORE: 'kedai_papa_store_v1',
-  PRODUCTS: 'kedai_papa_products_v1',
-  MOVEMENTS: 'kedai_papa_movements_v1',
-  SALES: 'kedai_papa_sales_v1',
-  SUPPLIERS: 'kedai_papa_suppliers_v1',
-  PURCHASES: 'kedai_papa_purchases_v1',
-  CUSTOMERS: 'kedai_papa_customers_v1',
-  LOYALTY: 'kedai_papa_loyalty_v1',
-  STAFF: 'kedai_papa_staff_v1',
-};
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [store, setStore] = useState<Store>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.STORE);
-    if (saved) {
-      try { return JSON.parse(saved); } catch { /* ignore */ }
+  // Ensure schema version is stamped on initialization
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.SCHEMA_VERSION, String(CURRENT_SCHEMA_VERSION));
+    } catch {
+      // Ignore if localStorage unavailable
     }
-    return INITIAL_STORE;
+  }, []);
+
+  const [store, setStore] = useState<Store>(() => {
+    return StorageService.safeParse<Store>(
+      localStorage.getItem(STORAGE_KEYS.STORE),
+      INITIAL_STORE,
+      (val) => !!val && typeof val === 'object' && !Array.isArray(val) && !!(val as any).id
+    );
   });
 
   // Current primary role: Admin / Store Owner (foundation ready for future roles)
@@ -121,81 +139,77 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
 
   const [products, setProducts] = useState<Product[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-    if (saved) {
-      try {
-        const parsed: Product[] = JSON.parse(saved);
-        const testProd = INITIAL_PRODUCTS.find((p) => p.sku === 'TEST-001');
-        if (testProd && !parsed.some((p) => p.sku === 'TEST-001')) {
-          return [testProd, ...parsed];
-        }
-        return parsed;
-      } catch { /* ignore */ }
+    const parsed = StorageService.safeParse<Product[]>(
+      localStorage.getItem(STORAGE_KEYS.PRODUCTS),
+      INITIAL_PRODUCTS,
+      (val) => Array.isArray(val)
+    );
+    const testProd = INITIAL_PRODUCTS.find((p) => p.sku === 'TEST-001');
+    if (testProd && !parsed.some((p) => p.sku === 'TEST-001')) {
+      return [testProd, ...parsed];
     }
-    return INITIAL_PRODUCTS;
+    return parsed;
   });
 
   const [movements, setMovements] = useState<InventoryMovement[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.MOVEMENTS);
-    if (saved) {
-      try {
-        const parsed: InventoryMovement[] = JSON.parse(saved);
-        const testMov = INITIAL_MOVEMENTS.find((m) => m.id === 'mov-init-test-001');
-        if (testMov && !parsed.some((m) => m.productId === 'prod-test-001')) {
-          return [testMov, ...parsed];
-        }
-        return parsed;
-      } catch { /* ignore */ }
+    const parsed = StorageService.safeParse<InventoryMovement[]>(
+      localStorage.getItem(STORAGE_KEYS.MOVEMENTS),
+      INITIAL_MOVEMENTS,
+      (val) => Array.isArray(val)
+    );
+    const testMov = INITIAL_MOVEMENTS.find((m) => m.id === 'mov-init-test-001');
+    if (testMov && !parsed.some((m) => m.productId === 'prod-test-001')) {
+      return [testMov, ...parsed];
     }
-    return INITIAL_MOVEMENTS;
+    return parsed;
   });
 
   const [sales, setSales] = useState<Sale[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.SALES);
-    if (saved) {
-      try { return JSON.parse(saved); } catch { /* ignore */ }
-    }
-    return INITIAL_SALES;
+    return StorageService.safeParse<Sale[]>(
+      localStorage.getItem(STORAGE_KEYS.SALES),
+      INITIAL_SALES,
+      (val) => Array.isArray(val)
+    );
   });
 
   const [suppliers, setSuppliers] = useState<Supplier[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
-    if (saved) {
-      try { return JSON.parse(saved); } catch { /* ignore */ }
-    }
-    return INITIAL_SUPPLIERS;
+    return StorageService.safeParse<Supplier[]>(
+      localStorage.getItem(STORAGE_KEYS.SUPPLIERS),
+      INITIAL_SUPPLIERS,
+      (val) => Array.isArray(val)
+    );
   });
 
   const [purchases, setPurchases] = useState<Purchase[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.PURCHASES);
-    if (saved) {
-      try { return JSON.parse(saved); } catch { /* ignore */ }
-    }
-    return INITIAL_PURCHASES;
+    return StorageService.safeParse<Purchase[]>(
+      localStorage.getItem(STORAGE_KEYS.PURCHASES),
+      INITIAL_PURCHASES,
+      (val) => Array.isArray(val)
+    );
   });
 
   const [customers, setCustomers] = useState<Customer[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-    if (saved) {
-      try { return JSON.parse(saved); } catch { /* ignore */ }
-    }
-    return INITIAL_CUSTOMERS;
+    return StorageService.safeParse<Customer[]>(
+      localStorage.getItem(STORAGE_KEYS.CUSTOMERS),
+      INITIAL_CUSTOMERS,
+      (val) => Array.isArray(val)
+    );
   });
 
   const [loyaltyLedger, setLoyaltyLedger] = useState<LoyaltyLedgerEntry[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.LOYALTY);
-    if (saved) {
-      try { return JSON.parse(saved); } catch { /* ignore */ }
-    }
-    return INITIAL_LOYALTY_LEDGER;
+    return StorageService.safeParse<LoyaltyLedgerEntry[]>(
+      localStorage.getItem(STORAGE_KEYS.LOYALTY),
+      INITIAL_LOYALTY_LEDGER,
+      (val) => Array.isArray(val)
+    );
   });
 
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.STAFF);
-    if (saved) {
-      try { return JSON.parse(saved); } catch { /* ignore */ }
-    }
-    return INITIAL_STAFF;
+    return StorageService.safeParse<StaffUser[]>(
+      localStorage.getItem(STORAGE_KEYS.STAFF),
+      INITIAL_STAFF,
+      (val) => Array.isArray(val)
+    );
   });
 
   const [activeStaff, setActiveStaff] = useState<StaffUser | null>(() => {
@@ -240,6 +254,55 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(staffUsers));
   }, [staffUsers]);
+
+  // Admin Mode state (SES 4.4 Locked Part A & Part J)
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
+  const [isPinModalOpen, setIsPinModalOpen] = useState<boolean>(false);
+  const [adminActionDesc, setAdminActionDesc] = useState<string | undefined>(undefined);
+  const [pendingAdminAction, setPendingAdminAction] = useState<(() => void) | null>(null);
+
+  const openPinModal = (desc?: string, onApproved?: () => void) => {
+    setAdminActionDesc(desc);
+    if (onApproved) {
+      setPendingAdminAction(() => onApproved);
+    } else {
+      setPendingAdminAction(null);
+    }
+    setIsPinModalOpen(true);
+  };
+
+  const closePinModal = () => {
+    setIsPinModalOpen(false);
+    setPendingAdminAction(null);
+    setAdminActionDesc(undefined);
+  };
+
+  const enterAdminMode = (pin: string) => {
+    const res = AdminAuthService.verifyPin(pin);
+    if (res.success) {
+      setIsAdminMode(true);
+      setIsPinModalOpen(false);
+      if (pendingAdminAction) {
+        const actionToRun = pendingAdminAction;
+        setPendingAdminAction(null);
+        actionToRun();
+      }
+    }
+    return res;
+  };
+
+  const exitAdminMode = () => {
+    setIsAdminMode(false);
+    setPendingAdminAction(null);
+  };
+
+  const requireAdmin = (action: () => void, desc?: string) => {
+    if (isAdminMode) {
+      action();
+    } else {
+      openPinModal(desc, action);
+    }
+  };
 
   /**
    * Check SKU uniqueness across all products within the store context
@@ -333,6 +396,57 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     return createdProduct;
+  };
+
+  /**
+   * Bulk import validated products from CSV (SES 4.4 Locked Part D).
+   * Automatically initializes opening inventory movements for stock > 0.
+   */
+  const importProducts = (
+    newItems: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>[]
+  ): number => {
+    if (!newItems || newItems.length === 0) return 0;
+    const now = new Date().toISOString();
+    const addedProducts: Product[] = [];
+    const openingMovements: InventoryMovement[] = [];
+
+    newItems.forEach((item, idx) => {
+      const id = `prod-import-${Date.now()}-${idx}`;
+      const product: Product = {
+        ...item,
+        id,
+        storeId: store.id,
+        createdAt: now,
+        updatedAt: now,
+      };
+      addedProducts.push(product);
+
+      if (item.currentStock > 0) {
+        openingMovements.push({
+          id: `mov-imp-${Date.now()}-${idx}`,
+          storeId: store.id,
+          productId: id,
+          productName: item.name,
+          type: 'STOCK_IN',
+          quantity: item.currentStock,
+          previousStock: 0,
+          newStock: item.currentStock,
+          reason: 'Import CSV Pembukaan Stok',
+          adjustedBySnapshot: currentUser.name,
+          createdAt: now,
+        });
+      }
+    });
+
+    const updatedProducts = [...products, ...addedProducts];
+    const updatedMovements = [...openingMovements, ...movements];
+
+    setProducts(updatedProducts);
+    setMovements(updatedMovements);
+    StorageService.safeSet(STORAGE_KEYS.PRODUCTS, updatedProducts);
+    StorageService.safeSet(STORAGE_KEYS.MOVEMENTS, updatedMovements);
+
+    return addedProducts.length;
   };
 
   /**
@@ -812,6 +926,49 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.removeItem(STORAGE_KEYS.STAFF);
   };
 
+  const exportStoreData = (): StoreBackupPayload => {
+    return StorageService.createBackupPayload({
+      store,
+      products,
+      movements,
+      sales,
+      suppliers,
+      purchases,
+      customers,
+      loyaltyLedger,
+      staffUsers,
+    });
+  };
+
+  const downloadBackup = (): void => {
+    const payload = exportStoreData();
+    StorageService.downloadBackup(payload);
+  };
+
+  const restoreStoreData = (payload: StoreBackupPayload): { success: boolean; message: string } => {
+    const validation = StorageService.validateBackupPayload(payload);
+    if (!validation.isValid || !validation.data) {
+      throw new Error(validation.error || 'Invalid backup structure.');
+    }
+
+    const data = validation.data;
+    setStore(data.store);
+    setProducts(data.products);
+    setMovements(data.movements);
+    setSales(data.sales);
+    setSuppliers(data.suppliers);
+    setPurchases(data.purchases);
+    setCustomers(data.customers);
+    setLoyaltyLedger(data.loyaltyLedger);
+    setStaffUsers(data.staffUsers);
+    setActiveStaff(data.staffUsers.find((s) => s.role === 'CASHIER') || data.staffUsers[0] || null);
+
+    return {
+      success: true,
+      message: `Store data successfully restored from backup (${data.products.length} products, ${data.sales.length} sales, ${data.purchases.length} purchases).`,
+    };
+  };
+
   return (
     <StoreContext.Provider
       value={{
@@ -827,7 +984,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         staffUsers,
         activeStaff,
         isLoading,
+        isAdminMode,
+        isPinModalOpen,
+        openPinModal,
+        closePinModal,
+        enterAdminMode,
+        exitAdminMode,
+        requireAdmin,
         addProduct,
+        importProducts,
         updateProduct,
         toggleProductActive,
         deleteProduct,
@@ -857,9 +1022,25 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setActiveStaff,
         resetToDemo,
         updateStoreDetails,
+        exportStoreData,
+        downloadBackup,
+        restoreStoreData,
       }}
     >
       {children}
+      <AdminPinModal
+        isOpen={isPinModalOpen}
+        onClose={closePinModal}
+        onSuccess={() => {
+          setIsAdminMode(true);
+          if (pendingAdminAction) {
+            const actionToRun = pendingAdminAction;
+            setPendingAdminAction(null);
+            actionToRun();
+          }
+        }}
+        actionDescription={adminActionDesc}
+      />
     </StoreContext.Provider>
   );
 };

@@ -25,6 +25,8 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Filter,
+  Download,
+  SearchCheck,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { Customer, Sale, LoyaltyLedgerEntry } from '../types';
@@ -32,6 +34,10 @@ import { formatCurrency, formatDateTime } from '../services/formatters';
 import { CustomerService } from '../services/customerService';
 import { LoyaltyService } from '../services/loyaltyService';
 import { ReceiptModal } from '../components/pos/ReceiptModal';
+import { CsvService } from '../services/csvService';
+import { DuplicateAuditService } from '../services/duplicateAuditService';
+import { SmartInputService } from '../services/smartInputService';
+import { DuplicateAuditModal } from '../components/common/DuplicateAuditModal';
 
 export const CustomersPage: React.FC = () => {
   const {
@@ -45,6 +51,8 @@ export const CustomersPage: React.FC = () => {
     deleteCustomer,
     isCustomerCodeAvailable,
     redeemLoyaltyPoints,
+    isAdminMode,
+    requireAdmin,
   } = useStore();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,6 +65,13 @@ export const CustomersPage: React.FC = () => {
   const [selectedCustomerForDetail, setSelectedCustomerForDetail] = useState<Customer | null>(null);
   const [viewReceiptSale, setViewReceiptSale] = useState<Sale | null>(null);
   const [customerDetailTab, setCustomerDetailTab] = useState<'HISTORY' | 'LOYALTY'>('HISTORY');
+  const [isDuplicateAuditOpen, setIsDuplicateAuditOpen] = useState(false);
+
+  // Duplicate audit groups (SES 4.4 Locked Part E)
+  const duplicateAuditGroups = useMemo(
+    () => DuplicateAuditService.auditCustomers(customers),
+    [customers]
+  );
 
   // Form State
   const [formCode, setFormCode] = useState('');
@@ -153,42 +168,74 @@ export const CustomersPage: React.FC = () => {
     e.preventDefault();
     setFormError(null);
 
+    // Smart Form input normalization (SES 4.4 Locked Part B)
+    const normName = SmartInputService.normalizeName(formName);
+    const normCode = SmartInputService.normalizeCode(formCode);
+    const normPhone = SmartInputService.normalizePhone(formPhone);
+
+    if (!normName) {
+      setFormError('Nama pelanggan tidak boleh kosong.');
+      return;
+    }
+    if (!normCode) {
+      setFormError('Kod pelanggan tidak boleh kosong.');
+      return;
+    }
+
     try {
       if (editingCustomer) {
         updateCustomer(editingCustomer.id, {
-          customerName: formName,
-          phone: formPhone,
-          email: formEmail,
-          notes: formNotes,
+          customerName: normName,
+          phone: normPhone,
+          email: formEmail.trim(),
+          notes: formNotes.trim(),
           active: formActive,
         });
         setEditingCustomer(null);
-        setFeedbackNotice({ type: 'success', text: `Customer "${formName}" updated successfully.` });
+        setFeedbackNotice({ type: 'success', text: `Customer "${normName}" updated successfully.` });
       } else {
         addCustomer({
-          customerCode: formCode,
-          customerName: formName,
-          phone: formPhone,
-          email: formEmail,
-          notes: formNotes,
+          customerCode: normCode,
+          customerName: normName,
+          phone: normPhone,
+          email: formEmail.trim(),
+          notes: formNotes.trim(),
           active: formActive,
         });
         setIsAddModalOpen(false);
-        setFeedbackNotice({ type: 'success', text: `Customer "${formName}" registered successfully.` });
+        setFeedbackNotice({ type: 'success', text: `Customer "${normName}" registered successfully.` });
       }
     } catch (err: any) {
       setFormError(err.message || 'Validation error.');
     }
   };
 
+  const handleAddClick = () => {
+    requireAdmin(handleOpenAddModal, 'Daftar Pelanggan Baru');
+  };
+
+  const handleEditClick = (cust: Customer) => {
+    requireAdmin(() => handleOpenEditModal(cust), `Kemaskini Pelanggan ${cust.customerName}`);
+  };
+
+  const handleToggleClick = (cust: Customer) => {
+    requireAdmin(() => toggleCustomerActive(cust.id), `Tukar Status Pelanggan ${cust.customerName}`);
+  };
+
+  const handleDeleteClick = (cust: Customer) => {
+    requireAdmin(() => handleDelete(cust), `Padam Pelanggan ${cust.customerName}`);
+  };
+
+  const handleExportCsvClick = () => {
+    CsvService.exportCustomers(filteredCustomers, loyaltyLedger);
+  };
+
   const handleDelete = (cust: Customer) => {
-    if (confirm(`Are you sure you want to remove customer "${cust.customerName}"?`)) {
-      const result = deleteCustomer(cust.id);
-      setFeedbackNotice({
-        type: result.success ? 'success' : 'info',
-        text: result.message,
-      });
-    }
+    const result = deleteCustomer(cust.id);
+    setFeedbackNotice({
+      type: result.success ? 'success' : 'info',
+      text: result.message,
+    });
   };
 
   // Customer 360° Data
@@ -248,15 +295,46 @@ export const CustomersPage: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          id="add-customer-btn"
-          onClick={handleOpenAddModal}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-semibold rounded-lg shadow-sm transition"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Customer</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Duplicate Audit Button (SES 4.4 Locked Part E) */}
+          <button
+            type="button"
+            id="audit-customers-btn"
+            onClick={() => setIsDuplicateAuditOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200 bg-white text-stone-700 text-xs font-medium hover:bg-stone-50 transition shadow-2xs cursor-pointer"
+            title="Semak pertindihan nama atau telefon pelanggan"
+          >
+            <SearchCheck className="w-4 h-4 text-stone-600" />
+            <span>Audit Duplikasi</span>
+            {duplicateAuditGroups.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold">
+                {duplicateAuditGroups.length}
+              </span>
+            )}
+          </button>
+
+          {/* Export CSV Button (SES 4.4 Locked Part D) */}
+          <button
+            type="button"
+            id="export-customers-csv-btn"
+            onClick={handleExportCsvClick}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200 bg-white text-stone-700 text-xs font-medium hover:bg-stone-50 transition shadow-2xs cursor-pointer"
+            title="Eksport senarai pelanggan semasa ke fail CSV"
+          >
+            <Download className="w-4 h-4 text-stone-600" />
+            <span>Export CSV</span>
+          </button>
+
+          <button
+            type="button"
+            id="add-customer-btn"
+            onClick={handleAddClick}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-semibold rounded-lg shadow-sm transition cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Customer</span>
+          </button>
+        </div>
       </div>
 
       {/* Notice Banner */}
@@ -428,13 +506,13 @@ export const CustomersPage: React.FC = () => {
                       <td className="px-4 py-3 text-center">
                         <button
                           type="button"
-                          onClick={() => toggleCustomerActive(cust.id)}
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold transition ${
+                          onClick={() => handleToggleClick(cust)}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold transition cursor-pointer ${
                             cust.active
                               ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
                               : 'bg-stone-100 text-stone-500 border border-stone-200 hover:bg-stone-200'
                           }`}
-                          title="Click to toggle status"
+                          title="Click to toggle status (Admin PIN required)"
                         >
                           {cust.active ? (
                             <>
@@ -469,24 +547,24 @@ export const CustomersPage: React.FC = () => {
                               setSelectedCustomerForDetail(cust);
                               setCustomerDetailTab('HISTORY');
                             }}
-                            className="p-1.5 rounded hover:bg-stone-100 text-stone-600 hover:text-stone-900"
+                            className="p-1.5 rounded hover:bg-stone-100 text-stone-600 hover:text-stone-900 cursor-pointer"
                             title="Customer 360° View & History"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleOpenEditModal(cust)}
-                            className="p-1.5 rounded hover:bg-stone-100 text-stone-600 hover:text-stone-900"
-                            title="Edit Customer"
+                            onClick={() => handleEditClick(cust)}
+                            className="p-1.5 rounded hover:bg-stone-100 text-stone-600 hover:text-stone-900 cursor-pointer"
+                            title="Edit Customer (Admin PIN required)"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDelete(cust)}
-                            className="p-1.5 rounded hover:bg-rose-50 text-stone-400 hover:text-rose-600"
-                            title="Delete or Deactivate"
+                            onClick={() => handleDeleteClick(cust)}
+                            className="p-1.5 rounded hover:bg-rose-50 text-stone-400 hover:text-rose-600 cursor-pointer"
+                            title="Delete or Deactivate (Admin PIN required)"
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -966,6 +1044,14 @@ export const CustomersPage: React.FC = () => {
           sale={viewReceiptSale}
         />
       )}
+
+      {/* Duplicate Audit Modal (SES 4.4 Locked Part E) */}
+      <DuplicateAuditModal
+        isOpen={isDuplicateAuditOpen}
+        onClose={() => setIsDuplicateAuditOpen(false)}
+        auditGroups={duplicateAuditGroups}
+        entityType="Pelanggan"
+      />
     </div>
   );
 };

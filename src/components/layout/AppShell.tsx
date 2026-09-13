@@ -14,6 +14,8 @@ import {
   X,
   UserCheck,
   RotateCcw,
+  Shield,
+  ShieldCheck,
 } from 'lucide-react';
 import { ActivePage } from '../../types';
 import { useStore } from '../../context/StoreContext';
@@ -29,7 +31,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   onNavigate,
   children,
 }) => {
-  const { store, currentUser, resetToDemo } = useStore();
+  const { store, currentUser, resetToDemo, isAdminMode, openPinModal, exitAdminMode } = useStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
@@ -37,7 +39,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'products', label: 'Products', icon: Package },
     { id: 'inventory', label: 'Inventory', icon: Boxes },
-    { id: 'pos', label: 'POS / Sales', icon: ShoppingCart },
+    { id: 'pos', label: 'POS', icon: ShoppingCart },
     { id: 'purchases', label: 'Purchases', icon: Truck },
     { id: 'suppliers', label: 'Suppliers', icon: Building2 },
     { id: 'customers', label: 'Customers', icon: Users },
@@ -54,42 +56,52 @@ export const AppShell: React.FC<AppShellProps> = ({
     <div className="min-h-screen bg-stone-100/70 text-stone-900 flex flex-col font-sans antialiased">
       {/* Top Application Header */}
       <header className="bg-white border-b border-stone-200 sticky top-0 z-30 shadow-2xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+        <div className="w-full px-2 sm:px-4 lg:px-6">
+          <div className="flex items-center justify-between h-14 w-full gap-2 sm:gap-4">
             {/* Left: Brand / Store Badge */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
               <button
                 type="button"
                 id="mobile-menu-toggle-btn"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="md:hidden p-2 rounded-lg text-stone-600 hover:bg-stone-100 hover:text-stone-900 focus:outline-hidden"
+                className="md:hidden p-1.5 rounded-lg text-stone-600 hover:bg-stone-100 hover:text-stone-900 focus:outline-hidden"
                 aria-label="Toggle navigation"
               >
                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>
 
-              <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => onNavigate('dashboard')}>
-                <div className="w-10 h-10 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold shadow-xs">
-                  <StoreIcon className="w-5 h-5" />
+              <div
+                id="header-branding-home-trigger"
+                role="button"
+                tabIndex={0}
+                aria-label="Kembali ke Dashboard Kedai PAPA"
+                className="flex items-center gap-2 cursor-pointer hover:opacity-95 transition select-none group"
+                onClick={() => {
+                  onNavigate('dashboard');
+                  setMobileMenuOpen(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    onNavigate('dashboard');
+                    setMobileMenuOpen(false);
+                  }
+                }}
+              >
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold shadow-2xs group-hover:scale-105 transition-transform">
+                  <StoreIcon className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-stone-900 tracking-tight text-base sm:text-lg">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-stone-900 tracking-tight text-sm sm:text-base leading-tight">
                       {store.name}
                     </span>
-                    <span className="text-[10px] font-semibold tracking-wide uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
-                      Pilot Store
-                    </span>
                   </div>
-                  <span className="text-xs text-stone-500 hidden sm:inline-block">
-                    Retail POS & Inventory System
-                  </span>
                 </div>
               </div>
             </div>
 
             {/* Desktop Navigation Links */}
-            <nav className="hidden md:flex items-center gap-1">
+            <nav className="hidden md:flex items-center gap-0.5 lg:gap-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activePage === item.id;
@@ -99,25 +111,46 @@ export const AppShell: React.FC<AppShellProps> = ({
                     id={`nav-item-${item.id}`}
                     type="button"
                     onClick={() => handleNavClick(item.id)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs lg:text-sm font-medium transition-colors ${
                       isActive
                         ? 'bg-stone-900 text-white shadow-2xs'
                         : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
                     }`}
                   >
-                    <Icon className="w-4 h-4" />
+                    <Icon className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
                     <span>{item.label}</span>
                   </button>
                 );
               })}
             </nav>
 
-            {/* Right: Active Role Badge & POS Quick Launch */}
-            <div className="flex items-center gap-2 sm:gap-3">
+            {/* Right: Admin Mode Button & Active Role Badge & POS Quick Launch */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              {/* Admin Mode Toggle Button (SES 4.4 Locked Part A: Default Orange [ Admin ], Active Green [ Admin Mode Aktif ]) */}
+              <button
+                type="button"
+                id="header-admin-mode-btn"
+                onClick={() => {
+                  if (isAdminMode) {
+                    exitAdminMode();
+                  } else {
+                    openPinModal();
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition shadow-2xs cursor-pointer ${
+                  isAdminMode
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-orange-600 hover:bg-orange-700 text-white'
+                }`}
+                title={isAdminMode ? 'Klik untuk keluar dari Mod Admin' : 'Klik untuk buka Mod Admin'}
+              >
+                {isAdminMode ? <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                <span>{isAdminMode ? 'Admin Mode Aktif' : 'Admin'}</span>
+              </button>
+
               {/* Role pill showing Admin / Store Owner */}
-              <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-stone-100 border border-stone-200 text-xs text-stone-700">
-                <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="font-medium">Role:</span>
+              <div className="hidden xl:flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-100 border border-stone-200 text-[11px] text-stone-700">
+                <UserCheck className="w-3 h-3 text-emerald-600" />
                 <span className="font-semibold text-stone-900">{currentUser.role} (Owner)</span>
               </div>
 
@@ -127,9 +160,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                   type="button"
                   id="header-quick-pos-btn"
                   onClick={() => onNavigate('pos')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs sm:text-sm font-semibold hover:bg-emerald-700 transition shadow-2xs"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition shadow-2xs cursor-pointer"
                 >
-                  <ShoppingCart className="w-4 h-4" />
+                  <ShoppingCart className="w-3.5 h-3.5" />
                   <span>Open POS</span>
                 </button>
               )}
@@ -140,6 +173,27 @@ export const AppShell: React.FC<AppShellProps> = ({
         {/* Mobile Navigation Drawer */}
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-stone-200 bg-white px-4 pt-2 pb-4 space-y-1 animate-in slide-in-from-top-2 duration-150">
+            {/* Mobile Admin Mode quick switch */}
+            <div className="pb-2 mb-2 border-b border-stone-100">
+              <button
+                type="button"
+                id="mobile-admin-mode-btn"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  if (isAdminMode) {
+                    exitAdminMode();
+                  } else {
+                    openPinModal();
+                  }
+                }}
+                className={`w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold text-white shadow-2xs ${
+                  isAdminMode ? 'bg-emerald-600' : 'bg-orange-600'
+                }`}
+              >
+                {isAdminMode ? <ShieldCheck className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
+                <span>{isAdminMode ? 'Admin Mode Aktif (Klik untuk Keluar)' : 'Akses Mod Admin'}</span>
+              </button>
+            </div>
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activePage === item.id;
