@@ -13,7 +13,6 @@ import {
   Menu,
   X,
   UserCheck,
-  RotateCcw,
   Shield,
   ShieldCheck,
   Cloud,
@@ -37,7 +36,6 @@ export const AppShell: React.FC<AppShellProps> = ({
   const {
     store,
     currentUser,
-    resetToDemo,
     isAdminMode,
     openPinModal,
     exitAdminMode,
@@ -46,7 +44,6 @@ export const AppShell: React.FC<AppShellProps> = ({
     syncAllToCloud,
   } = useStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const navItems: { id: ActivePage; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -273,61 +270,22 @@ export const AppShell: React.FC<AppShellProps> = ({
         {children}
       </main>
 
-      {/* Footer with architecture discipline note & Reset button */}
+      {/* Footer */}
       <footer className="bg-white border-t border-stone-200 py-4 text-xs text-stone-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-stone-700">Kedai PAPA POS</span>
             <span>•</span>
-            <span>Part 01 Foundation</span>
+            <span>Sistem Pengurusan & Jualan Runcit</span>
             <span>•</span>
-            <span className="text-stone-400">PRODUCT → INVENTORY → POS → SALES → GROSS PROFIT</span>
+            <span className="text-stone-400">PAPA RETAIL OS</span>
           </div>
 
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => setShowResetConfirm(true)}
-              className="inline-flex items-center gap-1 text-stone-500 hover:text-stone-800 transition"
-              title="Reset state to initial pilot demo records"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset Demo State</span>
-            </button>
+          <div className="text-stone-400 text-[11px]">
+            &copy; {new Date().getFullYear()} Kedai PAPA
           </div>
         </div>
       </footer>
-
-      {/* Reset Confirmation Dialog */}
-      {showResetConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-xs">
-          <div className="bg-white rounded-xl shadow-xl border border-stone-200 p-6 max-w-sm w-full">
-            <h4 className="text-base font-bold text-stone-900 mb-2">Reset Demo State?</h4>
-            <p className="text-xs text-stone-600 mb-4">
-              This will reload the initial Kedai PAPA pilot catalog, opening stock movements, and initial sales.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowResetConfirm(false)}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-stone-200 text-stone-700 hover:bg-stone-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  resetToDemo();
-                  setShowResetConfirm(false);
-                }}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-600 text-white hover:bg-rose-700"
-              >
-                Reset Data
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -153,8 +153,8 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({
                 disabled={lockout.locked}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDownInput}
-                placeholder="Masukkan 4-digit PIN"
-                className="w-full text-center text-xl tracking-[0.4em] font-mono px-4 py-2.5 rounded-lg border border-stone-300 focus:outline-hidden focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition disabled:bg-stone-100 disabled:text-stone-400"
+                placeholder="••••"
+                className="w-full text-center text-base tracking-[0.5em] font-sans px-4 py-2.5 rounded-lg border border-stone-300 placeholder:text-stone-300 placeholder:tracking-[0.5em] focus:outline-hidden focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition disabled:bg-stone-100 disabled:text-stone-400 text-stone-800"
                 autoComplete="off"
               />
             </div>
