@@ -18,8 +18,15 @@ import {
   LoyaltyLedgerEntry,
   CsvImportMode,
   ProductCatalogUpdatePayload,
+  Sale,
+  Purchase,
+  InventoryMovement,
+  MasterCatalogSyncValidationResult,
+  MasterSyncProductRow,
+  MasterSyncMissingProduct,
 } from '../types';
 import { SmartInputService } from './smartInputService';
+import { ProductService } from './productService';
 
 export interface CsvImportValidationResult<T> {
   totalRows: number;
@@ -541,4 +548,383 @@ export class CsvService {
   ): CsvImportValidationResult<Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>> {
     return this.validateProductsUpsert(csvRows, existingProducts, 'SKIP_EXISTING');
   }
+
+  /**
+   * MASTER CATALOG SYNC / OVERRIDE VALIDATION
+   * Validates imported CSV rows where the CSV represents the authoritative CURRENT MASTER CATALOG.
+   * - SKU is the primary matching key.
+   * - Existing SKU = UPDATE / OVERRIDE CURRENT PRODUCT DATA (or UNCHANGED if identical).
+   * - New SKU = NEW PRODUCT (opening stock via STOCK_IN).
+   * - Stock differences create ADJUSTMENT movements (+X or -X). Zero diff creates no movement.
+   * - Duplicate SKU inside the same CSV is strictly INVALID (Section 29).
+   * - Missing products: DEACTIVATED if historical records exist; REMOVED if demo/unused (Section 15-17).
+   */
+  public static validateMasterCatalogSync(
+    csvRows: Record<string, string>[],
+    existingProducts: Product[],
+    sales: Sale[] = [],
+    purchases: Purchase[] = [],
+    movements: InventoryMovement[] = []
+  ): MasterCatalogSyncValidationResult {
+    // 1. Pre-scan SKU frequencies within this CSV batch to detect internal duplicate SKUs
+    const skuFrequencyMap = new Map<string, number>();
+    csvRows.forEach((row) => {
+      const matchingKey = Object.keys(row).find((k) => /sku/i.test(k));
+      const rawSku = matchingKey ? row[matchingKey] : '';
+      const norm = SmartInputService.normalizeCode(rawSku);
+      if (norm) {
+        skuFrequencyMap.set(norm, (skuFrequencyMap.get(norm) || 0) + 1);
+      }
+    });
+
+    const existingSkuMap = new Map<string, Product>();
+    existingProducts.forEach((p) => {
+      existingSkuMap.set(SmartInputService.normalizeCode(p.sku), p);
+    });
+
+    const rows: MasterSyncProductRow[] = [];
+    const errors: { rowNumber: number; reason: string; rawRow: Record<string, string> }[] = [];
+    const validCsvSkus = new Set<string>();
+
+    csvRows.forEach((row, index) => {
+      const rowNumber = index + 2; // Header is line 1
+
+      const findVal = (pattern: RegExp) => {
+        const matchingKey = Object.keys(row).find((k) => pattern.test(k));
+        return matchingKey ? row[matchingKey] : '';
+      };
+
+      const rawSku = findVal(/sku/i);
+      const rawName = findVal(/name|nama/i);
+      const rawCategory = findVal(/category|kategori/i);
+      const rawCost = findVal(/cost|kos/i);
+      const rawPrice = findVal(/price|harga|selling/i);
+      const rawStock = findVal(/stock|stok|current/i);
+      const rawMinStock = findVal(/min|minimum/i);
+      const rawStatus = findVal(/status|active|aktif/i);
+
+      const sku = SmartInputService.normalizeCode(rawSku);
+      const name = SmartInputService.normalizeName(rawName);
+
+      // Validation 1: SKU must be present
+      if (!sku) {
+        const reason = 'SKU tidak boleh kosong.';
+        errors.push({ rowNumber, reason, rawRow: row });
+        rows.push({
+          rowNumber,
+          action: 'INVALID',
+          sku: rawSku || '-',
+          name: rawName || '-',
+          category: rawCategory || '-',
+          costPrice: 0,
+          sellingPrice: 0,
+          csvStock: 0,
+          minimumStock: 0,
+          active: false,
+          reason,
+          stockNote: 'Baris tidak sah - SKU kosong.',
+          rawRow: row,
+        });
+        return;
+      }
+
+      // Validation 2: Duplicate SKU inside the same CSV file (Section 29)
+      if ((skuFrequencyMap.get(sku) || 0) > 1) {
+        const reason = `Duplikasi SKU '${sku}' dikesan dalam fail CSV ini. Setiap baris mesti mempunyai SKU yang unik.`;
+        errors.push({ rowNumber, reason, rawRow: row });
+        rows.push({
+          rowNumber,
+          action: 'INVALID',
+          sku,
+          name: name || rawName || '-',
+          category: rawCategory || 'General',
+          costPrice: SmartInputService.parseNumeric(rawCost, 0),
+          sellingPrice: SmartInputService.parseNumeric(rawPrice, 0),
+          csvStock: SmartInputService.parseNumeric(rawStock, 0),
+          minimumStock: SmartInputService.parseNumeric(rawMinStock, 5),
+          active: true,
+          reason,
+          stockNote: 'Baris pendua dalam fail CSV - pembetulan fail diperlukan.',
+          rawRow: row,
+        });
+        return;
+      }
+
+      // Validation 3: Product name must be present
+      if (!name) {
+        const reason = 'Nama produk tidak boleh kosong.';
+        errors.push({ rowNumber, reason, rawRow: row });
+        rows.push({
+          rowNumber,
+          action: 'INVALID',
+          sku,
+          name: rawName || '-',
+          category: rawCategory || '-',
+          costPrice: 0,
+          sellingPrice: 0,
+          csvStock: 0,
+          minimumStock: 0,
+          active: false,
+          reason,
+          stockNote: 'Baris tidak sah - Nama kosong.',
+          rawRow: row,
+        });
+        return;
+      }
+
+      // Validation 4: Cost Price numeric & >= 0
+      const trimmedCost = rawCost.trim();
+      const parsedCostNum = trimmedCost !== '' ? Number(trimmedCost.replace(/[^0-9.-]+/g, '')) : NaN;
+      if (trimmedCost === '' || isNaN(parsedCostNum) || parsedCostNum < 0 || !isFinite(parsedCostNum)) {
+        const reason = `Harga kos '${rawCost}' tidak sah. Sila masukkan nombor bukan negatif.`;
+        errors.push({ rowNumber, reason, rawRow: row });
+        rows.push({
+          rowNumber,
+          action: 'INVALID',
+          sku,
+          name,
+          category: rawCategory || '-',
+          costPrice: 0,
+          sellingPrice: 0,
+          csvStock: 0,
+          minimumStock: 0,
+          active: false,
+          reason,
+          stockNote: 'Baris tidak sah - Kos tidak sah.',
+          rawRow: row,
+        });
+        return;
+      }
+
+      // Validation 5: Selling Price numeric & >= 0
+      const trimmedPrice = rawPrice.trim();
+      const parsedPriceNum = trimmedPrice !== '' ? Number(trimmedPrice.replace(/[^0-9.-]+/g, '')) : NaN;
+      if (trimmedPrice === '' || isNaN(parsedPriceNum) || parsedPriceNum < 0 || !isFinite(parsedPriceNum)) {
+        const reason = `Harga jualan '${rawPrice}' tidak sah. Sila masukkan nombor bukan negatif.`;
+        errors.push({ rowNumber, reason, rawRow: row });
+        rows.push({
+          rowNumber,
+          action: 'INVALID',
+          sku,
+          name,
+          category: rawCategory || '-',
+          costPrice: SmartInputService.roundToTwoDecimals(parsedCostNum),
+          sellingPrice: 0,
+          csvStock: 0,
+          minimumStock: 0,
+          active: false,
+          reason,
+          stockNote: 'Baris tidak sah - Harga jualan tidak sah.',
+          rawRow: row,
+        });
+        return;
+      }
+
+      // Validation 6: Stock safety (Section 8: numeric, integer, >= 0, no NaN, no Infinity)
+      const trimmedStock = rawStock.trim();
+      const parsedStockNum = trimmedStock !== '' ? Number(trimmedStock.replace(/[^0-9.-]+/g, '')) : NaN;
+      if (
+        trimmedStock === '' ||
+        isNaN(parsedStockNum) ||
+        parsedStockNum < 0 ||
+        !isFinite(parsedStockNum) ||
+        !Number.isInteger(parsedStockNum)
+      ) {
+        const reason = `Nilai stok '${rawStock}' tidak sah. Stok mestilah nombor bulat (integer) bukan negatif.`;
+        errors.push({ rowNumber, reason, rawRow: row });
+        rows.push({
+          rowNumber,
+          action: 'INVALID',
+          sku,
+          name,
+          category: rawCategory || '-',
+          costPrice: SmartInputService.roundToTwoDecimals(parsedCostNum),
+          sellingPrice: SmartInputService.roundToTwoDecimals(parsedPriceNum),
+          csvStock: 0,
+          minimumStock: 0,
+          active: false,
+          reason,
+          stockNote: 'Baris tidak sah - Nilai stok tidak sah.',
+          rawRow: row,
+        });
+        return;
+      }
+
+      const costPrice = SmartInputService.roundToTwoDecimals(parsedCostNum);
+      const sellingPrice = SmartInputService.roundToTwoDecimals(parsedPriceNum);
+      const csvStock = parsedStockNum;
+      const category = (rawCategory || 'Snacks & Biscuits').trim();
+      const minimumStock = rawMinStock !== '' ? Math.max(0, Math.floor(SmartInputService.parseNumeric(rawMinStock, 5))) : 5;
+
+      let active = true;
+      if (rawStatus) {
+        active = !/inactive|tidak|false|0/i.test(rawStatus);
+      }
+
+      validCsvSkus.add(sku);
+
+      const existingProd = existingSkuMap.get(sku);
+
+      if (existingProd) {
+        // If status column wasn't provided in CSV, preserve existing status
+        if (!rawStatus) {
+          active = existingProd.active;
+        }
+
+        const currentStock = existingProd.currentStock;
+        const stockDifference = csvStock - currentStock;
+        const costChanged = Math.abs(costPrice - existingProd.costPrice) > 0.0001;
+        const sellingPriceChanged = Math.abs(sellingPrice - existingProd.sellingPrice) > 0.0001;
+        const stockChanged = stockDifference !== 0;
+        const nameChanged = name !== existingProd.name;
+        const categoryChanged = (category || 'General') !== (existingProd.category || 'General');
+        const minStockChanged = minimumStock !== existingProd.minimumStock;
+        const activeChanged = active !== existingProd.active;
+
+        const isUpdated =
+          costChanged ||
+          sellingPriceChanged ||
+          stockChanged ||
+          nameChanged ||
+          categoryChanged ||
+          minStockChanged ||
+          activeChanged;
+
+        const action: 'UPDATE' | 'UNCHANGED' = isUpdated ? 'UPDATE' : 'UNCHANGED';
+        let reason = '';
+        let stockNote = '';
+
+        if (stockChanged) {
+          stockNote =
+            stockDifference > 0
+              ? `Penyelarasan stok: +${stockDifference} unit (ADJUSTMENT)`
+              : `Penyelarasan stok: ${stockDifference} unit (ADJUSTMENT)`;
+        } else {
+          stockNote = 'Stok tidak berubah (tiada pergerakan inventori)';
+        }
+
+        if (isUpdated) {
+          const changes: string[] = [];
+          if (nameChanged) changes.push(`nama (${existingProd.name} → ${name})`);
+          if (costChanged) changes.push(`kos (RM${existingProd.costPrice.toFixed(2)} → RM${costPrice.toFixed(2)})`);
+          if (sellingPriceChanged) changes.push(`harga jual (RM${existingProd.sellingPrice.toFixed(2)} → RM${sellingPrice.toFixed(2)})`);
+          if (stockChanged) changes.push(`stok (${currentStock} → ${csvStock})`);
+          if (categoryChanged) changes.push(`kategori (${existingProd.category} → ${category})`);
+          if (minStockChanged) changes.push(`min stok (${existingProd.minimumStock} → ${minimumStock})`);
+          if (activeChanged) changes.push(`status (${existingProd.active ? 'Aktif' : 'Tidak Aktif'} → ${active ? 'Aktif' : 'Tidak Aktif'})`);
+          reason = `Katalog dikemas kini: ${changes.join(', ')}.`;
+        } else {
+          reason = 'Data katalog dan stok semasa sepadan sepenuhnya dengan fail CSV.';
+        }
+
+        rows.push({
+          rowNumber,
+          action,
+          sku,
+          name,
+          category,
+          costPrice,
+          sellingPrice,
+          csvStock,
+          currentStock,
+          stockDifference,
+          minimumStock,
+          active,
+          reason,
+          stockNote,
+          existingProductId: existingProd.id,
+          costChanged,
+          sellingPriceChanged,
+          stockChanged,
+          rawRow: row,
+        });
+      } else {
+        // Genuinely NEW product
+        const stockNote =
+          csvStock > 0
+            ? `Pembukaan stok: ${csvStock} unit (STOCK_IN direkodkan)`
+            : 'Tiada pembukaan stok (0 unit)';
+
+        rows.push({
+          rowNumber,
+          action: 'NEW',
+          sku,
+          name,
+          category,
+          costPrice,
+          sellingPrice,
+          csvStock,
+          currentStock: 0,
+          stockDifference: csvStock,
+          minimumStock,
+          active,
+          reason: 'Produk baharu - akan didaftarkan ke dalam katalog master.',
+          stockNote,
+          costChanged: true,
+          sellingPriceChanged: true,
+          stockChanged: csvStock > 0,
+          rawRow: row,
+        });
+      }
+    });
+
+    // 2. Identify products in system NOT present in CSV (Section 15, 16, 17)
+    const missingProducts: MasterSyncMissingProduct[] = [];
+    existingProducts.forEach((p) => {
+      const normSku = SmartInputService.normalizeCode(p.sku);
+      if (!validCsvSkus.has(normSku)) {
+        const eligibility = ProductService.checkDeleteEligibility(p, sales, purchases, movements);
+        if (eligibility.hasHistoricalReferences) {
+          missingProducts.push({
+            product: p,
+            action: 'DEACTIVATE',
+            reason: 'Produk mempunyai rekod sejarah dan tiada dalam fail CSV. Dinyahaktifkan bagi mengekalkan rekod perniagaan.',
+            hasHistoricalReferences: true,
+          });
+        } else {
+          missingProducts.push({
+            product: p,
+            action: 'REMOVE',
+            reason: 'Produk demo/ujian tanpa rekod sejarah dan tiada dalam fail CSV. Dikeluarkan dari katalog secara selamat.',
+            hasHistoricalReferences: false,
+          });
+        }
+      }
+    });
+
+    const newCount = rows.filter((r) => r.action === 'NEW').length;
+    const updateCount = rows.filter((r) => r.action === 'UPDATE').length;
+    const unchangedCount = rows.filter((r) => r.action === 'UNCHANGED').length;
+    const invalidCount = rows.filter((r) => r.action === 'INVALID').length;
+    const stockAdjustmentsCount =
+      rows.filter((r) => r.action === 'UPDATE' && (r.stockDifference || 0) !== 0).length +
+      rows.filter((r) => r.action === 'NEW' && r.csvStock > 0).length;
+    const stockIncreaseCount = rows.filter(
+      (r) => (r.action === 'UPDATE' || r.action === 'NEW') && (r.stockDifference || 0) > 0
+    ).length;
+    const stockDecreaseCount = rows.filter(
+      (r) => r.action === 'UPDATE' && (r.stockDifference || 0) < 0
+    ).length;
+    const deactivatedCount = missingProducts.filter((m) => m.action === 'DEACTIVATE').length;
+    const removedCount = missingProducts.filter((m) => m.action === 'REMOVE').length;
+
+    return {
+      totalRows: csvRows.length,
+      newCount,
+      updateCount,
+      unchangedCount,
+      stockAdjustmentsCount,
+      stockIncreaseCount,
+      stockDecreaseCount,
+      invalidCount,
+      missingProductsCount: missingProducts.length,
+      deactivatedCount,
+      removedCount,
+      rows,
+      missingProducts,
+      errors,
+      isValid: invalidCount === 0,
+    };
+  }
 }
+

@@ -37,6 +37,8 @@ export const STORAGE_KEYS = {
   CUSTOMERS: 'kedai_papa_customers_v1',
   LOYALTY: 'kedai_papa_loyalty_v1',
   STAFF: 'kedai_papa_staff_v1',
+  PRE_SYNC_BACKUP: 'kedai_papa_pre_sync_backup_v1',
+  LAST_SYNC_METADATA: 'kedai_papa_last_sync_metadata_v1',
 } as const;
 
 export interface ValidationResult {
@@ -75,6 +77,18 @@ export class StorageService {
       return parsed as T;
     } catch (err) {
       console.warn('Malformed JSON encountered in localStorage, reverting to fallback state.', err);
+      return fallback;
+    }
+  }
+
+  /**
+   * Safe getter for localStorage with fallback
+   */
+  public static safeGet<T>(key: string, fallback: T, typeGuard?: (val: unknown) => boolean): T {
+    try {
+      const raw = localStorage.getItem(key);
+      return this.safeParse<T>(raw, fallback, typeGuard);
+    } catch {
       return fallback;
     }
   }

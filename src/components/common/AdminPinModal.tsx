@@ -154,9 +154,22 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDownInput}
                 placeholder="••••"
-                className="w-full text-center text-base tracking-[0.5em] font-sans px-4 py-2.5 rounded-lg border border-stone-300 placeholder:text-stone-300 placeholder:tracking-[0.5em] focus:outline-hidden focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition disabled:bg-stone-100 disabled:text-stone-400 text-stone-800"
+                className="w-full text-center text-xs font-mono tracking-[0.8em] px-4 py-2.5 rounded-lg border border-stone-300 placeholder:text-stone-300 placeholder:tracking-[0.8em] focus:outline-hidden focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition disabled:bg-stone-100 disabled:text-stone-400 text-stone-800"
                 autoComplete="off"
               />
+              {/* Visual Symbol Indicators */}
+              <div className="flex justify-center items-center gap-2.5 mt-2.5" aria-hidden="true">
+                {[0, 1, 2, 3].map((i) => (
+                  <span
+                    key={i}
+                    className={`inline-block w-2.5 h-2.5 rounded-full transition-all duration-150 ${
+                      i < pin.length
+                        ? 'bg-orange-600 scale-110'
+                        : 'bg-stone-200'
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
 
             {/* Error Message */}

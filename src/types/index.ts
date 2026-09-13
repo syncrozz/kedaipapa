@@ -240,7 +240,7 @@ export interface StoreBackupPayload {
   staffUsers: StaffUser[];
 }
 
-export type CsvImportMode = 'SKIP_EXISTING' | 'UPDATE_EXISTING';
+export type CsvImportMode = 'MASTER_SYNC' | 'SKIP_EXISTING' | 'UPDATE_EXISTING';
 
 export interface ProductCatalogUpdatePayload {
   existingProductId: string;
@@ -267,6 +267,86 @@ export interface UpsertImportCommitResult {
   updatedCount: number;
   skippedCount: number;
   invalidCount: number;
+}
+
+export type MasterSyncAction = 'NEW' | 'UPDATE' | 'UNCHANGED' | 'INVALID';
+
+export interface MasterSyncProductRow {
+  rowNumber: number;
+  action: MasterSyncAction;
+  sku: string;
+  name: string;
+  category: string;
+  costPrice: number;
+  sellingPrice: number;
+  csvStock: number;
+  currentStock?: number;
+  stockDifference?: number;
+  minimumStock: number;
+  active: boolean;
+  reason: string;
+  stockNote: string;
+  existingProductId?: string;
+  costChanged?: boolean;
+  sellingPriceChanged?: boolean;
+  stockChanged?: boolean;
+  rawRow: Record<string, string>;
+}
+
+export interface MasterSyncMissingProduct {
+  product: Product;
+  action: 'DEACTIVATE' | 'REMOVE';
+  reason: string;
+  hasHistoricalReferences: boolean;
+}
+
+export interface MasterCatalogSyncValidationResult {
+  totalRows: number;
+  newCount: number;
+  updateCount: number;
+  unchangedCount: number;
+  stockAdjustmentsCount: number;
+  stockIncreaseCount: number;
+  stockDecreaseCount: number;
+  invalidCount: number;
+  missingProductsCount: number;
+  deactivatedCount: number;
+  removedCount: number;
+  rows: MasterSyncProductRow[];
+  missingProducts: MasterSyncMissingProduct[];
+  errors: { rowNumber: number; reason: string; rawRow: Record<string, string> }[];
+  isValid: boolean;
+}
+
+export interface MasterCatalogSyncPayload {
+  filename?: string;
+  validatedRows: MasterSyncProductRow[];
+  missingProducts: MasterSyncMissingProduct[];
+}
+
+export interface MasterCatalogSyncCommitResult {
+  success: boolean;
+  newCount: number;
+  updatedCount: number;
+  unchangedCount: number;
+  stockAdjustmentsCount: number;
+  deactivatedCount: number;
+  removedCount: number;
+  invalidCount: number;
+  backupSnapshotAt: string;
+  message: string;
+}
+
+export interface LastCatalogSyncInfo {
+  importedFilename: string;
+  importedAt: string;
+  totalRows: number;
+  newCount: number;
+  updatedCount: number;
+  unchangedCount: number;
+  stockAdjustmentsCount: number;
+  deactivatedCount: number;
+  removedCount: number;
 }
 
 

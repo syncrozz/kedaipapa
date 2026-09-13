@@ -19,6 +19,9 @@ import {
   StoreBackupPayload,
   CommitUpsertPayload,
   UpsertImportCommitResult,
+  MasterCatalogSyncPayload,
+  MasterCatalogSyncCommitResult,
+  LastCatalogSyncInfo,
 } from '../types';
 import {
   INITIAL_STORE,
@@ -78,6 +81,8 @@ interface StoreContextType {
   addProduct: (newProduct: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>) => Product;
   importProducts: (newProducts: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>[]) => number;
   commitProductsUpsertImport: (payload: CommitUpsertPayload) => UpsertImportCommitResult;
+  commitMasterCatalogSync: (payload: MasterCatalogSyncPayload) => MasterCatalogSyncCommitResult;
+  lastCatalogSyncInfo: LastCatalogSyncInfo | null;
   updateProduct: (id: string, updates: Partial<Product>) => Product;
   toggleProductActive: (id: string) => void;
   deleteProduct: (
@@ -219,6 +224,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [activeStaff, setActiveStaff] = useState<StaffUser | null>(() => {
     return INITIAL_STAFF.find((s) => s.role === 'CASHIER') || INITIAL_STAFF[0] || null;
+  });
+
+  const [lastCatalogSyncInfo, setLastCatalogSyncInfo] = useState<LastCatalogSyncInfo | null>(() => {
+    return StorageService.safeGet<LastCatalogSyncInfo | null>(STORAGE_KEYS.LAST_SYNC_METADATA, null);
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -633,6 +642,229 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updateItems: [],
     });
     return res.newCount;
+  };
+
+  /**
+   * MASTER CATALOG SYNC / OVERRIDE MODE (Permanent Operational Workflow)
+   * The imported CSV acts as the authoritative CURRENT MASTER CATALOG:
+   * 1. Creates full safety backup snapshot (Part 08) before sync. Fails fast if backup fails.
+   * 2. Matches products strictly by SKU:
+   *    - Existing SKU -> updates current catalog fields (name, category, cost, price, minStock, active)
+   *      and synchronizes stock:
+   *      * Stock difference != 0 -> creates ADJUSTMENT movement (+/-) with reason "CSV Master Catalog Sync"
+   *      * Stock difference == 0 -> no movement created
+   *    - New SKU -> registers new product + opening stock (STOCK_IN)
+   *    - Products missing from CSV:
+   *      * With historical references (sales/purchases/movements) -> DEACTIVATE (active = false)
+   *      * Demo/unused without history -> safely REMOVED from active catalog
+   * 3. Guarantees 100% historical immutability (historical Sale, SaleItem, Purchase, movements untouched).
+   * 4. Atomic: complete sync commits cleanly or aborts with zero partial mutations.
+   */
+  const commitMasterCatalogSync = (
+    payload: MasterCatalogSyncPayload
+  ): MasterCatalogSyncCommitResult => {
+    const { validatedRows, missingProducts } = payload;
+    const now = new Date().toISOString();
+
+    // 1. Mandatory Safety Backup Snapshot (Section 20)
+    let backupSnapshot: StoreBackupPayload;
+    try {
+      backupSnapshot = StorageService.createBackupPayload({
+        store,
+        products,
+        movements,
+        sales,
+        suppliers,
+        purchases,
+        customers,
+        loyaltyLedger,
+        staffUsers,
+      });
+      const validation = StorageService.validateBackupPayload(backupSnapshot);
+      if (!validation.isValid) {
+        throw new Error(validation.error || 'Backup validation failed.');
+      }
+      StorageService.safeSet(STORAGE_KEYS.PRE_SYNC_BACKUP, backupSnapshot);
+    } catch (err: any) {
+      throw new Error(`Master Catalog Sync Dibatalkan: Gagal mengambil sandaran keselamatan (backup) sebelum penyelarasan: ${err.message}`);
+    }
+
+    // 2. Pre-commit Validation & Atomicity Check (Section 8, 19, 29)
+    const invalidRow = validatedRows.find((r) => r.action === 'INVALID');
+    if (invalidRow) {
+      throw new Error(`Master Catalog Sync Dibatalkan: Baris SKU "${invalidRow.sku}" tidak sah (${invalidRow.reason}). Tiada data diubah.`);
+    }
+
+    const seenSkus = new Set<string>();
+    for (const row of validatedRows) {
+      const norm = SmartInputService.normalizeCode(row.sku);
+      if (seenSkus.has(norm)) {
+        throw new Error(`Master Catalog Sync Dibatalkan: Duplikasi SKU "${norm}" dikesan dalam fail CSV.`);
+      }
+      seenSkus.add(norm);
+    }
+
+    for (const row of validatedRows) {
+      if (row.action === 'UPDATE' || row.action === 'UNCHANGED') {
+        const found = products.find((p) => p.id === row.existingProductId);
+        if (!found) {
+          throw new Error(`Master Catalog Sync Dibatalkan: Produk ID "${row.existingProductId}" tidak dijumpai.`);
+        }
+      }
+    }
+
+    // 3. Execution Phase (In-Memory first)
+    const newMovements: InventoryMovement[] = [];
+    const rowsBySku = new Map<string, (typeof validatedRows)[0]>();
+    validatedRows.forEach((r) => {
+      rowsBySku.set(SmartInputService.normalizeCode(r.sku), r);
+    });
+
+    const missingMap = new Map<string, (typeof missingProducts)[0]>();
+    missingProducts.forEach((m) => {
+      missingMap.set(m.product.id, m);
+    });
+
+    const nextExistingProducts: Product[] = [];
+    let deactivatedCount = 0;
+    let removedCount = 0;
+    const removedProductIds = new Set<string>();
+
+    for (const prod of products) {
+      const normSku = SmartInputService.normalizeCode(prod.sku);
+      const csvRow = rowsBySku.get(normSku);
+
+      if (csvRow) {
+        // Matched existing SKU -> Override current catalog data & synchronize stock
+        const currentStock = prod.currentStock;
+        const targetStock = csvRow.csvStock;
+        const stockDiff = targetStock - currentStock;
+
+        if (stockDiff !== 0) {
+          newMovements.push({
+            id: `mov-sync-adj-${Date.now()}-${nextExistingProducts.length}`,
+            storeId: store.id,
+            productId: prod.id,
+            productName: csvRow.name,
+            type: 'ADJUSTMENT',
+            quantity: stockDiff,
+            previousStock: currentStock,
+            newStock: targetStock,
+            reason: 'CSV Master Catalog Sync',
+            adjustedBySnapshot: currentUser.name,
+            createdAt: now,
+          });
+        }
+
+        nextExistingProducts.push({
+          ...prod,
+          name: csvRow.name,
+          category: csvRow.category,
+          costPrice: csvRow.costPrice,
+          sellingPrice: csvRow.sellingPrice,
+          minimumStock: csvRow.minimumStock,
+          currentStock: targetStock,
+          active: csvRow.active,
+          updatedAt: now,
+        });
+      } else {
+        // Product NOT in CSV (Section 15, 16, 17)
+        const missingInfo = missingMap.get(prod.id);
+        if (missingInfo?.action === 'REMOVE') {
+          // Zero historical references (demo/unused) -> safe removal
+          removedCount++;
+          removedProductIds.add(prod.id);
+        } else {
+          // Has historical references (sales/purchases/movements) -> deactivate/archive
+          deactivatedCount++;
+          nextExistingProducts.push({
+            ...prod,
+            active: false,
+            updatedAt: now,
+          });
+        }
+      }
+    }
+
+    // Add genuinely new products
+    const addedProducts: Product[] = [];
+    const newRows = validatedRows.filter((r) => r.action === 'NEW');
+
+    newRows.forEach((r, idx) => {
+      const newId = `prod-sync-${Date.now()}-${idx}`;
+      const newProduct: Product = {
+        id: newId,
+        storeId: store.id,
+        sku: r.sku,
+        name: r.name,
+        category: r.category,
+        costPrice: r.costPrice,
+        sellingPrice: r.sellingPrice,
+        currentStock: r.csvStock,
+        minimumStock: r.minimumStock,
+        active: r.active,
+        createdAt: now,
+        updatedAt: now,
+      };
+      addedProducts.push(newProduct);
+
+      if (r.csvStock > 0) {
+        newMovements.push({
+          id: `mov-sync-in-${Date.now()}-${idx}`,
+          storeId: store.id,
+          productId: newId,
+          productName: r.name,
+          type: 'STOCK_IN',
+          quantity: r.csvStock,
+          previousStock: 0,
+          newStock: r.csvStock,
+          reason: 'Import CSV Pembukaan Stok',
+          adjustedBySnapshot: currentUser.name,
+          createdAt: now,
+        });
+      }
+    });
+
+    // Remove opening movements for genuinely removed demo products to avoid orphans
+    const nextMovements = movements.filter((m) => !removedProductIds.has(m.productId));
+    const finalMovements = [...newMovements, ...nextMovements];
+    const finalProducts = [...nextExistingProducts, ...addedProducts];
+
+    // 4. Atomically commit state & storage
+    setProducts(finalProducts);
+    setMovements(finalMovements);
+    StorageService.safeSet(STORAGE_KEYS.PRODUCTS, finalProducts);
+    StorageService.safeSet(STORAGE_KEYS.MOVEMENTS, finalMovements);
+
+    const updatedRowsCount = validatedRows.filter((r) => r.action === 'UPDATE').length;
+    const unchangedRowsCount = validatedRows.filter((r) => r.action === 'UNCHANGED').length;
+
+    const syncMetadata: LastCatalogSyncInfo = {
+      importedFilename: payload.filename || 'katalog_master.csv',
+      importedAt: now,
+      totalRows: validatedRows.length,
+      newCount: addedProducts.length,
+      updatedCount: updatedRowsCount,
+      unchangedCount: unchangedRowsCount,
+      stockAdjustmentsCount: newMovements.length,
+      deactivatedCount,
+      removedCount,
+    };
+    StorageService.safeSet(STORAGE_KEYS.LAST_SYNC_METADATA, syncMetadata);
+    setLastCatalogSyncInfo(syncMetadata);
+
+    return {
+      success: true,
+      newCount: addedProducts.length,
+      updatedCount: updatedRowsCount,
+      unchangedCount: unchangedRowsCount,
+      stockAdjustmentsCount: newMovements.length,
+      deactivatedCount,
+      removedCount,
+      invalidCount: 0,
+      backupSnapshotAt: backupSnapshot.exportedAt,
+      message: 'Master Catalog Sync berjaya diselesaikan.',
+    };
   };
 
   /**
@@ -1266,6 +1498,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addProduct,
         importProducts,
         commitProductsUpsertImport,
+        commitMasterCatalogSync,
+        lastCatalogSyncInfo,
         updateProduct,
         toggleProductActive,
         deleteProduct,
