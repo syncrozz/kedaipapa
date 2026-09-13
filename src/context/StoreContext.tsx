@@ -160,11 +160,36 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
 
   const [products, setProducts] = useState<Product[]>(() => {
-    return StorageService.safeParse<Product[]>(
+    const loaded = StorageService.safeParse<Product[]>(
       localStorage.getItem(STORAGE_KEYS.PRODUCTS),
       INITIAL_PRODUCTS,
       (val) => Array.isArray(val)
     );
+    // Tally cached products with verified catalog updates (e.g. MAGGI HOT CUP Selling Price RM3.00)
+    return loaded.map((p) => {
+      const seedMatch = INITIAL_PRODUCTS.find((init) => init.sku === p.sku);
+      if (
+        seedMatch &&
+        (p.name !== seedMatch.name ||
+          p.sellingPrice !== seedMatch.sellingPrice ||
+          p.costPrice !== seedMatch.costPrice)
+      ) {
+        if (
+          p.sku.startsWith('KP-MAGGI-') ||
+          (p.costPrice === p.sellingPrice && seedMatch.costPrice !== seedMatch.sellingPrice)
+        ) {
+          return {
+            ...p,
+            name: seedMatch.name,
+            costPrice: seedMatch.costPrice,
+            sellingPrice: seedMatch.sellingPrice,
+            currentStock: seedMatch.currentStock,
+            minimumStock: seedMatch.minimumStock,
+          };
+        }
+      }
+      return p;
+    });
   });
 
   const [movements, setMovements] = useState<InventoryMovement[]>(() => {

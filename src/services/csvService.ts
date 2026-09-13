@@ -313,19 +313,35 @@ export class CsvService {
     csvRows.forEach((row, index) => {
       const rowNumber = index + 2; // Account for 1-based index and header line
 
-      // Find keys case-insensitively
-      const findVal = (keyPattern: RegExp) => {
-        const matchingKey = Object.keys(row).find((k) => keyPattern.test(k));
+      // Find keys case-insensitively with optional exclusion filter to prevent collisions
+      // e.g. "Cost Price (RM)" must not collide with "Selling Price (RM)"
+      const findVal = (keyPattern: RegExp, excludePattern?: RegExp) => {
+        const matchingKey = Object.keys(row).find((k) => {
+          if (!keyPattern.test(k)) return false;
+          if (excludePattern && excludePattern.test(k)) return false;
+          return true;
+        });
         return matchingKey ? row[matchingKey] : '';
       };
 
-      const rawSku = findVal(/sku/i);
-      const rawName = findVal(/name|nama/i);
+      const rawSku = findVal(/sku|barcode|bar_code|kod/i);
+      const rawName = findVal(/name|nama|tajuk|description|item|produk/i);
       const rawCategory = findVal(/category|kategori/i);
-      const rawCost = findVal(/cost|kos/i);
-      const rawPrice = findVal(/price|harga|selling/i);
-      const rawStock = findVal(/stock|stok|current/i);
-      const rawMinStock = findVal(/min|minimum/i);
+
+      // Cost price: matches cost/kos/modal/beli
+      const rawCost = findVal(/cost|kos|modal|beli/i);
+
+      // Selling price: prioritize explicit selling/jual/retail, OR price/harga excluding cost/kos/modal/beli
+      const rawPrice =
+        findVal(/selling|jual|retail/i) ||
+        findVal(/price|harga/i, /cost|kos|modal|beli/i);
+
+      // Current stock: prioritize current_stock/semasa, OR stock/stok/qty excluding min/minimum/ambang
+      const rawStock =
+        findVal(/current.*stock|stok.*semasa|current|semasa/i) ||
+        findVal(/stock|stok|qty|kuantiti/i, /min|minimum|ambang/i);
+
+      const rawMinStock = findVal(/min|minimum|ambang/i);
       const rawStatus = findVal(/status|active|aktif/i);
 
       const sku = SmartInputService.normalizeCode(rawSku);
@@ -589,18 +605,35 @@ export class CsvService {
     csvRows.forEach((row, index) => {
       const rowNumber = index + 2; // Header is line 1
 
-      const findVal = (pattern: RegExp) => {
-        const matchingKey = Object.keys(row).find((k) => pattern.test(k));
+      // Find keys case-insensitively with optional exclusion filter to prevent collisions
+      // e.g. "Cost Price (RM)" must not collide with "Selling Price (RM)"
+      const findVal = (pattern: RegExp, excludePattern?: RegExp) => {
+        const matchingKey = Object.keys(row).find((k) => {
+          if (!pattern.test(k)) return false;
+          if (excludePattern && excludePattern.test(k)) return false;
+          return true;
+        });
         return matchingKey ? row[matchingKey] : '';
       };
 
-      const rawSku = findVal(/sku/i);
-      const rawName = findVal(/name|nama/i);
+      const rawSku = findVal(/sku|barcode|bar_code|kod/i);
+      const rawName = findVal(/name|nama|tajuk|description|item|produk/i);
       const rawCategory = findVal(/category|kategori/i);
-      const rawCost = findVal(/cost|kos/i);
-      const rawPrice = findVal(/price|harga|selling/i);
-      const rawStock = findVal(/stock|stok|current/i);
-      const rawMinStock = findVal(/min|minimum/i);
+
+      // Cost price: matches cost/kos/modal/beli
+      const rawCost = findVal(/cost|kos|modal|beli/i);
+
+      // Selling price: prioritize explicit selling/jual/retail, OR price/harga excluding cost/kos/modal/beli
+      const rawPrice =
+        findVal(/selling|jual|retail/i) ||
+        findVal(/price|harga/i, /cost|kos|modal|beli/i);
+
+      // Current stock: prioritize current_stock/semasa, OR stock/stok/qty excluding min/minimum/ambang
+      const rawStock =
+        findVal(/current.*stock|stok.*semasa|current|semasa/i) ||
+        findVal(/stock|stok|qty|kuantiti/i, /min|minimum|ambang/i);
+
+      const rawMinStock = findVal(/min|minimum|ambang/i);
       const rawStatus = findVal(/status|active|aktif/i);
 
       const sku = SmartInputService.normalizeCode(rawSku);

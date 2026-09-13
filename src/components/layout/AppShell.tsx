@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { ActivePage } from '../../types';
 import { useStore } from '../../context/StoreContext';
+import { SupportModal } from '../common/SupportModal';
 
 interface AppShellProps {
   activePage: ActivePage;
@@ -47,6 +48,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [syncToast, setSyncToast] = useState<string | null>(null);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
   const handleHeaderSync = async () => {
     setIsManualSyncing(true);
@@ -328,20 +330,59 @@ export const AppShell: React.FC<AppShellProps> = ({
 
       {/* Footer */}
       <footer className="bg-white border-t border-stone-200 py-4 text-xs text-stone-500">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-stone-700">Kedai PAPA POS</span>
-            <span>•</span>
-            <span>Sistem Pengurusan & Jualan Runcit</span>
-            <span>•</span>
-            <span className="text-stone-400">PAPA RETAIL OS</span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-2">
+          {/* Footer Left: Developer Credit & WhatsApp Contact Shortcut */}
+          <div className="flex items-center gap-2 text-xs text-stone-500">
+            <span>
+              Developed by{' '}
+              <a
+                href="https://www.syncrozz.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-stone-700 hover:text-stone-900 hover:underline font-normal transition-colors"
+              >
+                Syncrozz
+              </a>
+            </span>
+            <a
+              href="https://wa.me/60145313756"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="WhatsApp Syncrozz"
+              className="inline-flex items-center opacity-85 hover:opacity-100 transition-opacity"
+            >
+              <img
+                src="https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/MAIN/Logo%20Whatapp%20v2.png"
+                alt="WhatsApp Syncrozz"
+                className="w-5 h-5 object-contain inline-block align-middle"
+              />
+            </a>
           </div>
 
-          <div className="text-stone-400 text-[11px]">
-            &copy; {new Date().getFullYear()} Kedai PAPA
+          {/* Footer Right: Support CTA & Copyright */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              id="footer-support-btn"
+              onClick={() => setIsSupportModalOpen(true)}
+              className="inline-flex items-center gap-1 bg-stone-100 hover:bg-stone-200/70 dark:bg-white/[0.04] border border-stone-200/80 dark:border-white/5 text-stone-500 hover:text-stone-800 dark:text-white/50 text-[11px] font-normal px-2.5 py-1 rounded-full transition-colors cursor-pointer"
+            >
+              <span>Support</span>
+              <span className="text-rose-400/60 leading-none">❤️</span>
+            </button>
+
+            <div className="text-stone-400 text-[11px]">
+              &copy; {new Date().getFullYear()} Kedai PAPA
+            </div>
           </div>
         </div>
       </footer>
+
+      {/* Support Popup Modal */}
+      <SupportModal
+        isOpen={isSupportModalOpen}
+        onClose={() => setIsSupportModalOpen(false)}
+      />
     </div>
   );
 };
