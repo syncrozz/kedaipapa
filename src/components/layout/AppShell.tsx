@@ -42,8 +42,26 @@ export const AppShell: React.FC<AppShellProps> = ({
     cloudSyncStatus,
     lastCloudSync,
     syncAllToCloud,
+    pullAllFromCloud,
   } = useStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
+  const [syncToast, setSyncToast] = useState<string | null>(null);
+
+  const handleHeaderSync = async () => {
+    setIsManualSyncing(true);
+    try {
+      const pulled = await pullAllFromCloud();
+      await syncAllToCloud();
+      setSyncToast(pulled ? 'Data diselaraskan dengan Cloud!' : 'Data tempatan disegerakkan');
+      setTimeout(() => setSyncToast(null), 3000);
+    } catch {
+      setSyncToast('Ralat penyegerakan');
+      setTimeout(() => setSyncToast(null), 3000);
+    } finally {
+      setIsManualSyncing(false);
+    }
+  };
 
   const navItems: { id: ActivePage; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -137,37 +155,47 @@ export const AppShell: React.FC<AppShellProps> = ({
             {/* Right: Cloud Sync, Admin Mode Button, Role Badge & POS Quick Launch */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               {/* Cloud Sync Status Indicator */}
-              <button
-                type="button"
-                id="header-cloud-sync-btn"
-                onClick={() => syncAllToCloud()}
-                title={`Firebase Cloud Sync: ${cloudSyncStatus} ${lastCloudSync ? `(Terakhir disegerakkan: ${lastCloudSync.toLocaleTimeString()})` : ''}. Klik untuk segerakkan data ke peranti lain sekarang.`}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 transition cursor-pointer text-xs"
-              >
-                {cloudSyncStatus === 'CONNECTED' ? (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <Cloud className="w-3.5 h-3.5 text-emerald-600" />
-                    <span className="hidden sm:inline font-medium text-[11px] text-emerald-800">
-                      Cloud Sync Aktif
-                    </span>
-                  </>
-                ) : cloudSyncStatus === 'SYNCING' ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 text-amber-600 animate-spin" />
-                    <span className="hidden sm:inline font-medium text-[11px] text-amber-800">
-                      Menyegerak...
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <CloudOff className="w-3.5 h-3.5 text-stone-400" />
-                    <span className="hidden sm:inline font-medium text-[11px] text-stone-600">
-                      Luar Talian
-                    </span>
-                  </>
+              <div className="relative">
+                <button
+                  type="button"
+                  id="header-cloud-sync-btn"
+                  onClick={handleHeaderSync}
+                  disabled={isManualSyncing}
+                  title={`Firebase Cloud Sync: ${cloudSyncStatus} ${lastCloudSync ? `(Terakhir disegerakkan: ${lastCloudSync.toLocaleTimeString()})` : ''}. Klik untuk selaraskan data peranti ini dengan cloud.`}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 transition cursor-pointer text-xs"
+                >
+                  {isManualSyncing || cloudSyncStatus === 'SYNCING' ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                      <span className="hidden sm:inline font-medium text-[11px] text-amber-800">
+                        Menyegerak...
+                      </span>
+                    </>
+                  ) : cloudSyncStatus === 'CONNECTED' ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="hidden sm:inline font-medium text-[11px] text-emerald-800">
+                        Cloud Sync Aktif
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <CloudOff className="w-3.5 h-3.5 text-stone-400" />
+                      <span className="hidden sm:inline font-medium text-[11px] text-stone-600">
+                        Luar Talian
+                      </span>
+                    </>
+                  )}
+                </button>
+
+                {/* Toast feedback tooltip */}
+                {syncToast && (
+                  <div className="absolute top-full mt-1.5 right-0 bg-stone-900 text-white text-[11px] px-2.5 py-1 rounded-md shadow-lg whitespace-nowrap z-50 animate-in fade-in zoom-in-95 duration-150">
+                    {syncToast}
+                  </div>
                 )}
-              </button>
+              </div>
 
               {/* Admin Mode Toggle Button (SES 4.4 Locked Part A: Default Orange [ Admin ], Active Green [ Admin Mode Aktif ]) */}
               <button
@@ -215,9 +243,37 @@ export const AppShell: React.FC<AppShellProps> = ({
 
         {/* Mobile Navigation Drawer */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-stone-200 bg-white px-4 pt-2 pb-4 space-y-1 animate-in slide-in-from-top-2 duration-150">
-            {/* Mobile Admin Mode quick switch */}
-            <div className="pb-2 mb-2 border-b border-stone-100">
+          <div className="md:hidden border-t border-stone-200 bg-white px-4 pt-2 pb-4 space-y-2 animate-in slide-in-from-top-2 duration-150">
+            {/* Mobile Cloud Sync & Admin Controls */}
+            <div className="pb-2 space-y-1.5 border-b border-stone-100">
+              <button
+                type="button"
+                id="mobile-cloud-sync-btn"
+                onClick={handleHeaderSync}
+                disabled={isManualSyncing}
+                className="w-full flex items-center justify-between py-2 px-3 rounded-lg text-xs font-semibold bg-stone-100 hover:bg-stone-200 text-stone-800 transition"
+              >
+                <div className="flex items-center gap-2">
+                  {isManualSyncing || cloudSyncStatus === 'SYNCING' ? (
+                    <RefreshCw className="w-4 h-4 text-amber-600 animate-spin" />
+                  ) : cloudSyncStatus === 'CONNECTED' ? (
+                    <Cloud className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <CloudOff className="w-4 h-4 text-stone-400" />
+                  )}
+                  <span>
+                    {isManualSyncing
+                      ? 'Menyegerakkan Data...'
+                      : cloudSyncStatus === 'CONNECTED'
+                      ? 'Cloud Sync Aktif (Selaras)'
+                      : 'Luar Talian'}
+                  </span>
+                </div>
+                <span className="text-[10px] text-stone-500 font-mono">
+                  {lastCloudSync ? lastCloudSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Segerak Sekarang'}
+                </span>
+              </button>
+
               <button
                 type="button"
                 id="mobile-admin-mode-btn"

@@ -63,6 +63,31 @@ export interface FirestoreErrorInfo {
 
 export type CloudSyncStatus = 'CONNECTED' | 'SYNCING' | 'OFFLINE' | 'ERROR';
 
+/**
+ * Strips undefined values and non-serializable fields before sending to Firestore
+ */
+function sanitize<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function normalizeProduct(raw: any): Product {
+  return {
+    id: raw.id,
+    storeId: raw.storeId || 'store-kedai-papa-001',
+    sku: raw.sku || `SKU-${raw.id}`,
+    name: raw.name || 'Produk Tanpa Nama',
+    category: raw.category || 'Lain-lain',
+    costPrice: Number(raw.costPrice || 0),
+    sellingPrice: Number(raw.sellingPrice ?? raw.price ?? 0),
+    currentStock: Number(raw.currentStock || 0),
+    minimumStock: Number(raw.minimumStock || 0),
+    active: raw.active ?? true,
+    imageUrl: raw.imageUrl || raw.image || undefined,
+    createdAt: raw.createdAt || new Date().toISOString(),
+    updatedAt: raw.updatedAt || new Date().toISOString(),
+  };
+}
+
 export class FirebaseService {
   private static app: FirebaseApp | null = null;
   private static db: Firestore | null = null;
@@ -70,7 +95,6 @@ export class FirebaseService {
   private static lastSyncedAt: Date | null = null;
   private static statusListeners: ((status: CloudSyncStatus, lastSynced: Date | null) => void)[] = [];
   private static activeSubscriptions: Unsubscribe[] = [];
-  private static isInitialized = false;
 
   /**
    * Initializes Firebase app and Firestore instance
@@ -124,12 +148,12 @@ export class FirebaseService {
       const db = this.getDb();
       const testDocRef = doc(db, 'system', 'connection_check');
       // Test server connection
-      await setDoc(testDocRef, {
+      await setDoc(testDocRef, sanitize({
         status: 'online',
         testedAt: new Date().toISOString(),
         client: 'Kedai PAPA POS Web',
         timestamp: serverTimestamp(),
-      });
+      }));
       await getDocFromServer(testDocRef);
       this.updateStatus('CONNECTED');
       return true;
@@ -160,7 +184,7 @@ export class FirebaseService {
     return { status: this.syncStatus, lastSyncedAt: this.lastSyncedAt };
   }
 
-  private static updateStatus(status: CloudSyncStatus) {
+  public static updateStatus(status: CloudSyncStatus) {
     this.syncStatus = status;
     if (status === 'CONNECTED') {
       this.lastSyncedAt = new Date();
@@ -172,9 +196,99 @@ export class FirebaseService {
    * Cleans up all active Firestore snapshot listeners
    */
   public static unsubscribeAll(): void {
-    this.activeSubscriptions.forEach((unsub) => unsub());
+    this.activeSubscriptions.forEach((unsub) => {
+      try {
+        unsub();
+      } catch (err) {
+        console.warn('Error during unsubscribe:', err);
+      }
+    });
     this.activeSubscriptions = [];
-    this.isInitialized = false;
+  }
+
+  // -------------------------------------------------------------
+  // DIRECT FETCH FROM CLOUD (FOR INSTANT MULTI-DEVICE SYNC)
+  // -------------------------------------------------------------
+
+  /**
+   * Pulls authoritative state directly from Firestore for all collections.
+   * Guarantees mobile and desktop have identical records immediately on launch or refresh.
+   */
+  public static async fetchAllFromCloud(): Promise<{
+    store: Store | null;
+    products: Product[];
+    movements: InventoryMovement[];
+    sales: Sale[];
+    suppliers: Supplier[];
+    purchases: Purchase[];
+    customers: Customer[];
+    loyaltyLedger: LoyaltyLedgerEntry[];
+    staffUsers: StaffUser[];
+  }> {
+    try {
+      this.updateStatus('SYNCING');
+      const db = this.getDb();
+
+      const [
+        storesSnap,
+        productsSnap,
+        movementsSnap,
+        salesSnap,
+        suppliersSnap,
+        purchasesSnap,
+        customersSnap,
+        loyaltySnap,
+        staffSnap,
+      ] = await Promise.all([
+        getDocs(collection(db, 'stores')),
+        getDocs(collection(db, 'products')),
+        getDocs(collection(db, 'inventory_movements')),
+        getDocs(collection(db, 'sales')),
+        getDocs(collection(db, 'suppliers')),
+        getDocs(collection(db, 'purchases')),
+        getDocs(collection(db, 'customers')),
+        getDocs(collection(db, 'loyalty_ledger')),
+        getDocs(collection(db, 'staff_users')),
+      ]);
+
+      const store = !storesSnap.empty ? (storesSnap.docs[0].data() as Store) : null;
+      const products = productsSnap.docs.map((d) => normalizeProduct({ id: d.id, ...d.data() }));
+      const movements = movementsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as InventoryMovement));
+      const sales = salesSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Sale));
+      const suppliers = suppliersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Supplier));
+      const purchases = purchasesSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Purchase));
+      const customers = customersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Customer));
+      const loyaltyLedger = loyaltySnap.docs.map((d) => ({ id: d.id, ...d.data() } as LoyaltyLedgerEntry));
+      const staffUsers = staffSnap.docs.map((d) => ({ id: d.id, ...d.data() } as StaffUser));
+
+      this.updateStatus('CONNECTED');
+
+      return {
+        store,
+        products,
+        movements,
+        sales,
+        suppliers,
+        purchases,
+        customers,
+        loyaltyLedger,
+        staffUsers,
+      };
+    } catch (err) {
+      console.warn('fetchAllFromCloud error:', err);
+      this.updateStatus('CONNECTED');
+      return {
+        store: null,
+        products: [],
+        movements: [],
+        sales: [],
+        suppliers: [],
+        purchases: [],
+        customers: [],
+        loyaltyLedger: [],
+        staffUsers: [],
+      };
+    }
   }
 
   // -------------------------------------------------------------
@@ -184,7 +298,7 @@ export class FirebaseService {
   public static async syncStore(store: Store): Promise<void> {
     try {
       const db = this.getDb();
-      await setDoc(doc(db, 'stores', store.id), store);
+      await setDoc(doc(db, 'stores', store.id), sanitize(store));
       this.updateStatus('CONNECTED');
     } catch (err) {
       console.warn('Cloud syncStore error:', err);
@@ -194,10 +308,27 @@ export class FirebaseService {
   public static async syncProduct(product: Product): Promise<void> {
     try {
       const db = this.getDb();
-      await setDoc(doc(db, 'products', product.id), product);
+      await setDoc(doc(db, 'products', product.id), sanitize(product));
       this.updateStatus('CONNECTED');
     } catch (err) {
       console.warn('Cloud syncProduct error:', err);
+    }
+  }
+
+  public static async syncProductsBatch(products: Product[]): Promise<void> {
+    try {
+      const db = this.getDb();
+      // Firestore batches support up to 500 ops
+      const chunkSize = 400;
+      for (let i = 0; i < products.length; i += chunkSize) {
+        const chunk = products.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach((p) => batch.set(doc(db, 'products', p.id), sanitize(p)));
+        await batch.commit();
+      }
+      this.updateStatus('CONNECTED');
+    } catch (err) {
+      console.warn('Cloud syncProductsBatch error:', err);
     }
   }
 
@@ -214,17 +345,33 @@ export class FirebaseService {
   public static async syncMovement(movement: InventoryMovement): Promise<void> {
     try {
       const db = this.getDb();
-      await setDoc(doc(db, 'inventory_movements', movement.id), movement);
+      await setDoc(doc(db, 'inventory_movements', movement.id), sanitize(movement));
       this.updateStatus('CONNECTED');
     } catch (err) {
       console.warn('Cloud syncMovement error:', err);
     }
   }
 
+  public static async syncMovementsBatch(movements: InventoryMovement[]): Promise<void> {
+    try {
+      const db = this.getDb();
+      const chunkSize = 400;
+      for (let i = 0; i < movements.length; i += chunkSize) {
+        const chunk = movements.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach((m) => batch.set(doc(db, 'inventory_movements', m.id), sanitize(m)));
+        await batch.commit();
+      }
+      this.updateStatus('CONNECTED');
+    } catch (err) {
+      console.warn('Cloud syncMovementsBatch error:', err);
+    }
+  }
+
   public static async syncSale(sale: Sale): Promise<void> {
     try {
       const db = this.getDb();
-      await setDoc(doc(db, 'sales', sale.id), sale);
+      await setDoc(doc(db, 'sales', sale.id), sanitize(sale));
       this.updateStatus('CONNECTED');
     } catch (err) {
       console.warn('Cloud syncSale error:', err);
@@ -234,7 +381,7 @@ export class FirebaseService {
   public static async syncSupplier(supplier: Supplier): Promise<void> {
     try {
       const db = this.getDb();
-      await setDoc(doc(db, 'suppliers', supplier.id), supplier);
+      await setDoc(doc(db, 'suppliers', supplier.id), sanitize(supplier));
       this.updateStatus('CONNECTED');
     } catch (err) {
       console.warn('Cloud syncSupplier error:', err);
@@ -254,7 +401,7 @@ export class FirebaseService {
   public static async syncPurchase(purchase: Purchase): Promise<void> {
     try {
       const db = this.getDb();
-      await setDoc(doc(db, 'purchases', purchase.id), purchase);
+      await setDoc(doc(db, 'purchases', purchase.id), sanitize(purchase));
       this.updateStatus('CONNECTED');
     } catch (err) {
       console.warn('Cloud syncPurchase error:', err);
@@ -264,7 +411,7 @@ export class FirebaseService {
   public static async syncCustomer(customer: Customer): Promise<void> {
     try {
       const db = this.getDb();
-      await setDoc(doc(db, 'customers', customer.id), customer);
+      await setDoc(doc(db, 'customers', customer.id), sanitize(customer));
       this.updateStatus('CONNECTED');
     } catch (err) {
       console.warn('Cloud syncCustomer error:', err);
@@ -284,7 +431,7 @@ export class FirebaseService {
   public static async syncLoyaltyEntry(entry: LoyaltyLedgerEntry): Promise<void> {
     try {
       const db = this.getDb();
-      await setDoc(doc(db, 'loyalty_ledger', entry.id), entry);
+      await setDoc(doc(db, 'loyalty_ledger', entry.id), sanitize(entry));
       this.updateStatus('CONNECTED');
     } catch (err) {
       console.warn('Cloud syncLoyaltyEntry error:', err);
@@ -294,21 +441,52 @@ export class FirebaseService {
   public static async syncStaffUser(staff: StaffUser): Promise<void> {
     try {
       const db = this.getDb();
-      await setDoc(doc(db, 'staff_users', staff.id), staff);
+      await setDoc(doc(db, 'staff_users', staff.id), sanitize(staff));
       this.updateStatus('CONNECTED');
     } catch (err) {
       console.warn('Cloud syncStaffUser error:', err);
     }
   }
 
+  /**
+   * Syncs all data to cloud in batches (e.g. for complete backup restore)
+   */
+  public static async syncAllData(data: {
+    store: Store;
+    products: Product[];
+    movements: InventoryMovement[];
+    sales: Sale[];
+    suppliers: Supplier[];
+    purchases: Purchase[];
+    customers: Customer[];
+    loyaltyLedger: LoyaltyLedgerEntry[];
+    staffUsers: StaffUser[];
+  }): Promise<void> {
+    try {
+      this.updateStatus('SYNCING');
+      await this.syncStore(data.store);
+      await this.syncProductsBatch(data.products);
+      await this.syncMovementsBatch(data.movements);
+      for (const s of data.sales) await this.syncSale(s);
+      for (const sup of data.suppliers) await this.syncSupplier(sup);
+      for (const p of data.purchases) await this.syncPurchase(p);
+      for (const c of data.customers) await this.syncCustomer(c);
+      for (const l of data.loyaltyLedger) await this.syncLoyaltyEntry(l);
+      for (const st of data.staffUsers) await this.syncStaffUser(st);
+      this.updateStatus('CONNECTED');
+    } catch (err) {
+      console.warn('syncAllData error:', err);
+    }
+  }
+
   // -------------------------------------------------------------
-  // INITIAL CLOUD SYNC & SEEDING (FOR FIRST-TIME BOOTSTRAP)
+  // INITIAL CLOUD SYNC & SEEDING (CHECK EACH COLLECTION INDEPENDENTLY)
   // -------------------------------------------------------------
 
   /**
-   * Checks if Firestore has existing data. If empty, uploads initial dataset to cloud.
+   * Checks if collections in Firestore are empty and seeds any missing initial dataset.
    */
-  public static async bootstrapCloudDataIfEmpty(initialData: {
+  public static async bootstrapMissingCollections(initialData: {
     store: Store;
     products: Product[];
     movements: InventoryMovement[];
@@ -321,67 +499,70 @@ export class FirebaseService {
   }): Promise<boolean> {
     try {
       const db = this.getDb();
-      const productsSnap = await getDocs(collection(db, 'products'));
+      const [
+        storesSnap,
+        productsSnap,
+        suppliersSnap,
+        customersSnap,
+        staffSnap,
+      ] = await Promise.all([
+        getDocs(collection(db, 'stores')),
+        getDocs(collection(db, 'products')),
+        getDocs(collection(db, 'suppliers')),
+        getDocs(collection(db, 'customers')),
+        getDocs(collection(db, 'staff_users')),
+      ]);
 
-      if (!productsSnap.empty) {
-        // Cloud already has data!
-        return false;
-      }
-
-      console.log('Firestore is empty. Bootstrapping initial store data to cloud...');
-      this.updateStatus('SYNCING');
-
+      let seededAny = false;
       const batch = writeBatch(db);
 
       // Store
-      batch.set(doc(db, 'stores', initialData.store.id), initialData.store);
+      if (storesSnap.empty) {
+        batch.set(doc(db, 'stores', initialData.store.id), sanitize(initialData.store));
+        seededAny = true;
+      }
 
       // Products
-      for (const p of initialData.products) {
-        batch.set(doc(db, 'products', p.id), p);
-      }
-
-      // Movements
-      for (const m of initialData.movements) {
-        batch.set(doc(db, 'inventory_movements', m.id), m);
-      }
-
-      // Sales
-      for (const s of initialData.sales) {
-        batch.set(doc(db, 'sales', s.id), s);
+      if (productsSnap.empty && initialData.products.length > 0) {
+        initialData.products.forEach((p) => {
+          batch.set(doc(db, 'products', p.id), sanitize(p));
+        });
+        seededAny = true;
       }
 
       // Suppliers
-      for (const sup of initialData.suppliers) {
-        batch.set(doc(db, 'suppliers', sup.id), sup);
-      }
-
-      // Purchases
-      for (const pur of initialData.purchases) {
-        batch.set(doc(db, 'purchases', pur.id), pur);
+      if (suppliersSnap.empty && initialData.suppliers.length > 0) {
+        initialData.suppliers.forEach((s) => {
+          batch.set(doc(db, 'suppliers', s.id), sanitize(s));
+        });
+        seededAny = true;
       }
 
       // Customers
-      for (const c of initialData.customers) {
-        batch.set(doc(db, 'customers', c.id), c);
-      }
-
-      // Loyalty
-      for (const l of initialData.loyaltyLedger) {
-        batch.set(doc(db, 'loyalty_ledger', l.id), l);
+      if (customersSnap.empty && initialData.customers.length > 0) {
+        initialData.customers.forEach((c) => {
+          batch.set(doc(db, 'customers', c.id), sanitize(c));
+        });
+        seededAny = true;
       }
 
       // Staff
-      for (const stf of initialData.staffUsers) {
-        batch.set(doc(db, 'staff_users', stf.id), stf);
+      if (staffSnap.empty && initialData.staffUsers.length > 0) {
+        initialData.staffUsers.forEach((st) => {
+          batch.set(doc(db, 'staff_users', st.id), sanitize(st));
+        });
+        seededAny = true;
       }
 
-      await batch.commit();
-      console.log('Firestore initial bootstrap completed successfully.');
+      if (seededAny) {
+        await batch.commit();
+        console.log('Missing collections seeded to Firestore.');
+      }
+
       this.updateStatus('CONNECTED');
-      return true;
+      return seededAny;
     } catch (err) {
-      console.warn('Bootstrap to Firestore failed or skipped:', err);
+      console.warn('Bootstrap missing collections notice:', err);
       this.updateStatus('CONNECTED');
       return false;
     }
@@ -393,6 +574,7 @@ export class FirebaseService {
 
   /**
    * Initializes multi-device listeners that trigger callbacks whenever any device makes changes.
+   * Returns an unsubscribe function to clean up the specific listener set.
    */
   public static subscribeToRealtimeUpdates(callbacks: {
     onProductsUpdated?: (products: Product[]) => void;
@@ -404,9 +586,11 @@ export class FirebaseService {
     onLoyaltyUpdated?: (loyalty: LoyaltyLedgerEntry[]) => void;
     onStaffUpdated?: (staff: StaffUser[]) => void;
     onStoreUpdated?: (store: Store) => void;
-  }): void {
-    if (this.isInitialized) return;
-    this.isInitialized = true;
+  }): () => void {
+    // Clear previous active subscriptions if any
+    this.unsubscribeAll();
+
+    const localSubs: Unsubscribe[] = [];
 
     try {
       const db = this.getDb();
@@ -414,96 +598,88 @@ export class FirebaseService {
       // 1. Products listener
       if (callbacks.onProductsUpdated) {
         const unsub = onSnapshot(collection(db, 'products'), (snapshot) => {
-          if (!snapshot.empty) {
-            const list = snapshot.docs.map((d) => d.data() as Product);
-            callbacks.onProductsUpdated?.(list);
-            this.updateStatus('CONNECTED');
-          }
+          const list = snapshot.docs.map((d) => normalizeProduct({ id: d.id, ...d.data() }));
+          callbacks.onProductsUpdated?.(list);
+          this.updateStatus('CONNECTED');
         }, (err) => console.warn('Products listener notice:', err.message));
+        localSubs.push(unsub);
         this.activeSubscriptions.push(unsub);
       }
 
       // 2. Movements listener
       if (callbacks.onMovementsUpdated) {
         const unsub = onSnapshot(collection(db, 'inventory_movements'), (snapshot) => {
-          if (!snapshot.empty) {
-            const list = snapshot.docs.map((d) => d.data() as InventoryMovement);
-            callbacks.onMovementsUpdated?.(list);
-            this.updateStatus('CONNECTED');
-          }
+          const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as InventoryMovement));
+          callbacks.onMovementsUpdated?.(list);
+          this.updateStatus('CONNECTED');
         }, (err) => console.warn('Movements listener notice:', err.message));
+        localSubs.push(unsub);
         this.activeSubscriptions.push(unsub);
       }
 
       // 3. Sales listener
       if (callbacks.onSalesUpdated) {
         const unsub = onSnapshot(collection(db, 'sales'), (snapshot) => {
-          if (!snapshot.empty) {
-            const list = snapshot.docs.map((d) => d.data() as Sale);
-            callbacks.onSalesUpdated?.(list);
-            this.updateStatus('CONNECTED');
-          }
+          const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Sale));
+          callbacks.onSalesUpdated?.(list);
+          this.updateStatus('CONNECTED');
         }, (err) => console.warn('Sales listener notice:', err.message));
+        localSubs.push(unsub);
         this.activeSubscriptions.push(unsub);
       }
 
       // 4. Suppliers listener
       if (callbacks.onSuppliersUpdated) {
         const unsub = onSnapshot(collection(db, 'suppliers'), (snapshot) => {
-          if (!snapshot.empty) {
-            const list = snapshot.docs.map((d) => d.data() as Supplier);
-            callbacks.onSuppliersUpdated?.(list);
-            this.updateStatus('CONNECTED');
-          }
+          const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Supplier));
+          callbacks.onSuppliersUpdated?.(list);
+          this.updateStatus('CONNECTED');
         }, (err) => console.warn('Suppliers listener notice:', err.message));
+        localSubs.push(unsub);
         this.activeSubscriptions.push(unsub);
       }
 
       // 5. Purchases listener
       if (callbacks.onPurchasesUpdated) {
         const unsub = onSnapshot(collection(db, 'purchases'), (snapshot) => {
-          if (!snapshot.empty) {
-            const list = snapshot.docs.map((d) => d.data() as Purchase);
-            callbacks.onPurchasesUpdated?.(list);
-            this.updateStatus('CONNECTED');
-          }
+          const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Purchase));
+          callbacks.onPurchasesUpdated?.(list);
+          this.updateStatus('CONNECTED');
         }, (err) => console.warn('Purchases listener notice:', err.message));
+        localSubs.push(unsub);
         this.activeSubscriptions.push(unsub);
       }
 
       // 6. Customers listener
       if (callbacks.onCustomersUpdated) {
         const unsub = onSnapshot(collection(db, 'customers'), (snapshot) => {
-          if (!snapshot.empty) {
-            const list = snapshot.docs.map((d) => d.data() as Customer);
-            callbacks.onCustomersUpdated?.(list);
-            this.updateStatus('CONNECTED');
-          }
+          const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Customer));
+          callbacks.onCustomersUpdated?.(list);
+          this.updateStatus('CONNECTED');
         }, (err) => console.warn('Customers listener notice:', err.message));
+        localSubs.push(unsub);
         this.activeSubscriptions.push(unsub);
       }
 
       // 7. Loyalty listener
       if (callbacks.onLoyaltyUpdated) {
         const unsub = onSnapshot(collection(db, 'loyalty_ledger'), (snapshot) => {
-          if (!snapshot.empty) {
-            const list = snapshot.docs.map((d) => d.data() as LoyaltyLedgerEntry);
-            callbacks.onLoyaltyUpdated?.(list);
-            this.updateStatus('CONNECTED');
-          }
+          const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as LoyaltyLedgerEntry));
+          callbacks.onLoyaltyUpdated?.(list);
+          this.updateStatus('CONNECTED');
         }, (err) => console.warn('Loyalty listener notice:', err.message));
+        localSubs.push(unsub);
         this.activeSubscriptions.push(unsub);
       }
 
       // 8. Staff listener
       if (callbacks.onStaffUpdated) {
         const unsub = onSnapshot(collection(db, 'staff_users'), (snapshot) => {
-          if (!snapshot.empty) {
-            const list = snapshot.docs.map((d) => d.data() as StaffUser);
-            callbacks.onStaffUpdated?.(list);
-            this.updateStatus('CONNECTED');
-          }
+          const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as StaffUser));
+          callbacks.onStaffUpdated?.(list);
+          this.updateStatus('CONNECTED');
         }, (err) => console.warn('Staff listener notice:', err.message));
+        localSubs.push(unsub);
         this.activeSubscriptions.push(unsub);
       }
 
@@ -516,10 +692,21 @@ export class FirebaseService {
             this.updateStatus('CONNECTED');
           }
         }, (err) => console.warn('Store listener notice:', err.message));
+        localSubs.push(unsub);
         this.activeSubscriptions.push(unsub);
       }
     } catch (err) {
       console.warn('Error starting real-time listeners:', err);
     }
+
+    return () => {
+      localSubs.forEach((unsub) => {
+        try {
+          unsub();
+        } catch (err) {
+          console.warn('Error unsubscribing listener:', err);
+        }
+      });
+    };
   }
 }

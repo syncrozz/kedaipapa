@@ -3,7 +3,7 @@
  * Part 01: Foundation & Application Architecture
  */
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   Store,
   Product,
@@ -69,6 +69,7 @@ interface StoreContextType {
   cloudSyncStatus: CloudSyncStatus;
   lastCloudSync: Date | null;
   syncAllToCloud: () => Promise<void>;
+  pullAllFromCloud: () => Promise<boolean>;
   // Admin Mode Controls (Part A & Part J)
   isAdminMode: boolean;
   isPinModalOpen: boolean;
@@ -273,18 +274,72 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>('SYNCING');
   const [lastCloudSync, setLastCloudSync] = useState<Date | null>(null);
 
+  const isMountedRef = useRef(true);
+
+  const pullAllFromCloud = async (): Promise<boolean> => {
+    setCloudSyncStatus('SYNCING');
+    try {
+      const cloudData = await FirebaseService.fetchAllFromCloud();
+      if (cloudData.products && cloudData.products.length > 0) {
+        setProducts(cloudData.products);
+        StorageService.safeSet(STORAGE_KEYS.PRODUCTS, cloudData.products);
+      }
+      if (cloudData.store) {
+        setStore(cloudData.store);
+        StorageService.safeSet(STORAGE_KEYS.STORE, cloudData.store);
+      }
+      if (cloudData.movements && cloudData.movements.length > 0) {
+        setMovements(cloudData.movements);
+        StorageService.safeSet(STORAGE_KEYS.MOVEMENTS, cloudData.movements);
+      }
+      if (cloudData.sales && cloudData.sales.length > 0) {
+        setSales(cloudData.sales);
+        StorageService.safeSet(STORAGE_KEYS.SALES, cloudData.sales);
+      }
+      if (cloudData.suppliers && cloudData.suppliers.length > 0) {
+        setSuppliers(cloudData.suppliers);
+        StorageService.safeSet(STORAGE_KEYS.SUPPLIERS, cloudData.suppliers);
+      }
+      if (cloudData.purchases && cloudData.purchases.length > 0) {
+        setPurchases(cloudData.purchases);
+        StorageService.safeSet(STORAGE_KEYS.PURCHASES, cloudData.purchases);
+      }
+      if (cloudData.customers && cloudData.customers.length > 0) {
+        setCustomers(cloudData.customers);
+        StorageService.safeSet(STORAGE_KEYS.CUSTOMERS, cloudData.customers);
+      }
+      if (cloudData.loyaltyLedger && cloudData.loyaltyLedger.length > 0) {
+        setLoyaltyLedger(cloudData.loyaltyLedger);
+        StorageService.safeSet(STORAGE_KEYS.LOYALTY, cloudData.loyaltyLedger);
+      }
+      if (cloudData.staffUsers && cloudData.staffUsers.length > 0) {
+        setStaffUsers(cloudData.staffUsers);
+        StorageService.safeSet(STORAGE_KEYS.STAFF, cloudData.staffUsers);
+      }
+      setCloudSyncStatus('CONNECTED');
+      setLastCloudSync(new Date());
+      return true;
+    } catch (err) {
+      console.warn('Pull all from cloud notice:', err);
+      setCloudSyncStatus('CONNECTED');
+      return false;
+    }
+  };
+
   const syncAllToCloud = async () => {
     setCloudSyncStatus('SYNCING');
     try {
-      await FirebaseService.syncStore(store);
-      for (const p of products) await FirebaseService.syncProduct(p);
-      for (const m of movements) await FirebaseService.syncMovement(m);
-      for (const s of sales) await FirebaseService.syncSale(s);
-      for (const sup of suppliers) await FirebaseService.syncSupplier(sup);
-      for (const pur of purchases) await FirebaseService.syncPurchase(pur);
-      for (const c of customers) await FirebaseService.syncCustomer(c);
-      for (const l of loyaltyLedger) await FirebaseService.syncLoyaltyEntry(l);
-      for (const stf of staffUsers) await FirebaseService.syncStaffUser(stf);
+      await FirebaseService.syncAllData({
+        store,
+        products,
+        movements,
+        sales,
+        suppliers,
+        purchases,
+        customers,
+        loyaltyLedger,
+        staffUsers,
+      });
       setCloudSyncStatus('CONNECTED');
       setLastCloudSync(new Date());
     } catch (err) {
@@ -294,21 +349,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   useEffect(() => {
+    isMountedRef.current = true;
     let unsubStatus: (() => void) | undefined;
-    let isMounted = true;
+    let unsubRealtime: (() => void) | undefined;
 
     async function initCloudSync() {
       unsubStatus = FirebaseService.onStatusChange((status, lastSynced) => {
-        if (!isMounted) return;
+        if (!isMountedRef.current) return;
         setCloudSyncStatus(status);
         setLastCloudSync(lastSynced);
       });
 
-      // Validate connection to server
+      // 1. Validate connection to Firestore
       await FirebaseService.testConnection();
 
-      // Bootstrap initial seed data if cloud database is empty
-      await FirebaseService.bootstrapCloudDataIfEmpty({
+      // 2. Bootstrap any missing collections
+      await FirebaseService.bootstrapMissingCollections({
         store,
         products,
         movements,
@@ -320,52 +376,115 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         staffUsers,
       });
 
-      // Real-time listener: receive updates instantly when another tablet/device updates data
-      FirebaseService.subscribeToRealtimeUpdates({
+      // 3. Immediately pull latest authoritative data from Firestore
+      // This guarantees that mobile devices immediately load the exact same data as desktop on launch!
+      const cloudData = await FirebaseService.fetchAllFromCloud();
+      if (!isMountedRef.current) return;
+
+      if (cloudData.products && cloudData.products.length > 0) {
+        setProducts(cloudData.products);
+        StorageService.safeSet(STORAGE_KEYS.PRODUCTS, cloudData.products);
+      }
+      if (cloudData.store) {
+        setStore(cloudData.store);
+        StorageService.safeSet(STORAGE_KEYS.STORE, cloudData.store);
+      }
+      if (cloudData.movements && cloudData.movements.length > 0) {
+        setMovements(cloudData.movements);
+        StorageService.safeSet(STORAGE_KEYS.MOVEMENTS, cloudData.movements);
+      }
+      if (cloudData.sales && cloudData.sales.length > 0) {
+        setSales(cloudData.sales);
+        StorageService.safeSet(STORAGE_KEYS.SALES, cloudData.sales);
+      }
+      if (cloudData.suppliers && cloudData.suppliers.length > 0) {
+        setSuppliers(cloudData.suppliers);
+        StorageService.safeSet(STORAGE_KEYS.SUPPLIERS, cloudData.suppliers);
+      }
+      if (cloudData.purchases && cloudData.purchases.length > 0) {
+        setPurchases(cloudData.purchases);
+        StorageService.safeSet(STORAGE_KEYS.PURCHASES, cloudData.purchases);
+      }
+      if (cloudData.customers && cloudData.customers.length > 0) {
+        setCustomers(cloudData.customers);
+        StorageService.safeSet(STORAGE_KEYS.CUSTOMERS, cloudData.customers);
+      }
+      if (cloudData.loyaltyLedger && cloudData.loyaltyLedger.length > 0) {
+        setLoyaltyLedger(cloudData.loyaltyLedger);
+        StorageService.safeSet(STORAGE_KEYS.LOYALTY, cloudData.loyaltyLedger);
+      }
+      if (cloudData.staffUsers && cloudData.staffUsers.length > 0) {
+        setStaffUsers(cloudData.staffUsers);
+        StorageService.safeSet(STORAGE_KEYS.STAFF, cloudData.staffUsers);
+      }
+
+      // 4. Real-time listener: receive updates instantly when any device updates data
+      unsubRealtime = FirebaseService.subscribeToRealtimeUpdates({
         onProductsUpdated: (remoteProducts) => {
-          if (!isMounted || !remoteProducts || remoteProducts.length === 0) return;
+          if (!isMountedRef.current || !remoteProducts || remoteProducts.length === 0) return;
           setProducts(remoteProducts);
+          StorageService.safeSet(STORAGE_KEYS.PRODUCTS, remoteProducts);
         },
         onMovementsUpdated: (remoteMovements) => {
-          if (!isMounted || !remoteMovements) return;
+          if (!isMountedRef.current || !remoteMovements) return;
           setMovements(remoteMovements);
+          StorageService.safeSet(STORAGE_KEYS.MOVEMENTS, remoteMovements);
         },
         onSalesUpdated: (remoteSales) => {
-          if (!isMounted || !remoteSales) return;
+          if (!isMountedRef.current || !remoteSales) return;
           setSales(remoteSales);
+          StorageService.safeSet(STORAGE_KEYS.SALES, remoteSales);
         },
         onSuppliersUpdated: (remoteSuppliers) => {
-          if (!isMounted || !remoteSuppliers) return;
+          if (!isMountedRef.current || !remoteSuppliers) return;
           setSuppliers(remoteSuppliers);
+          StorageService.safeSet(STORAGE_KEYS.SUPPLIERS, remoteSuppliers);
         },
         onPurchasesUpdated: (remotePurchases) => {
-          if (!isMounted || !remotePurchases) return;
+          if (!isMountedRef.current || !remotePurchases) return;
           setPurchases(remotePurchases);
+          StorageService.safeSet(STORAGE_KEYS.PURCHASES, remotePurchases);
         },
         onCustomersUpdated: (remoteCustomers) => {
-          if (!isMounted || !remoteCustomers) return;
+          if (!isMountedRef.current || !remoteCustomers) return;
           setCustomers(remoteCustomers);
+          StorageService.safeSet(STORAGE_KEYS.CUSTOMERS, remoteCustomers);
         },
         onLoyaltyUpdated: (remoteLoyalty) => {
-          if (!isMounted || !remoteLoyalty) return;
+          if (!isMountedRef.current || !remoteLoyalty) return;
           setLoyaltyLedger(remoteLoyalty);
+          StorageService.safeSet(STORAGE_KEYS.LOYALTY, remoteLoyalty);
         },
         onStaffUpdated: (remoteStaff) => {
-          if (!isMounted || !remoteStaff) return;
+          if (!isMountedRef.current || !remoteStaff) return;
           setStaffUsers(remoteStaff);
+          StorageService.safeSet(STORAGE_KEYS.STAFF, remoteStaff);
         },
         onStoreUpdated: (remoteStore) => {
-          if (!isMounted || !remoteStore) return;
+          if (!isMountedRef.current || !remoteStore) return;
           setStore(remoteStore);
+          StorageService.safeSet(STORAGE_KEYS.STORE, remoteStore);
         },
       });
     }
 
     initCloudSync();
 
+    // Auto-refresh when tab gains focus or mobile phone wakes up
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        pullAllFromCloud();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
       if (unsubStatus) unsubStatus();
+      if (unsubRealtime) unsubRealtime();
       FirebaseService.unsubscribeAll();
     };
   }, []);
@@ -620,6 +739,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     StorageService.safeSet(STORAGE_KEYS.PRODUCTS, finalProducts);
     StorageService.safeSet(STORAGE_KEYS.MOVEMENTS, finalMovements);
 
+    // Sync imported products and movements to Firebase Firestore
+    FirebaseService.syncProductsBatch(finalProducts);
+    if (openingMovements.length > 0) {
+      FirebaseService.syncMovementsBatch(openingMovements);
+    }
+
     return {
       newCount: addedProducts.length,
       updatedCount: updateItems.length,
@@ -835,6 +960,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setMovements(finalMovements);
     StorageService.safeSet(STORAGE_KEYS.PRODUCTS, finalProducts);
     StorageService.safeSet(STORAGE_KEYS.MOVEMENTS, finalMovements);
+
+    // Sync master catalog changes to Firebase Firestore
+    FirebaseService.syncProductsBatch(finalProducts);
+    if (newMovements.length > 0) {
+      FirebaseService.syncMovementsBatch(newMovements);
+    }
+    removedProductIds.forEach((id) => FirebaseService.deleteProduct(id));
 
     const updatedRowsCount = validatedRows.filter((r) => r.action === 'UPDATE').length;
     const unchangedRowsCount = validatedRows.filter((r) => r.action === 'UNCHANGED').length;
@@ -1467,6 +1599,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setStaffUsers(data.staffUsers);
     setActiveStaff(data.staffUsers.find((s) => s.role === 'CASHIER') || data.staffUsers[0] || null);
 
+    FirebaseService.syncAllData({
+      store: data.store,
+      products: data.products,
+      movements: data.movements,
+      sales: data.sales,
+      suppliers: data.suppliers,
+      purchases: data.purchases,
+      customers: data.customers,
+      loyaltyLedger: data.loyaltyLedger,
+      staffUsers: data.staffUsers,
+    });
+
     return {
       success: true,
       message: `Store data successfully restored from backup (${data.products.length} products, ${data.sales.length} sales, ${data.purchases.length} purchases).`,
@@ -1537,6 +1681,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         cloudSyncStatus,
         lastCloudSync,
         syncAllToCloud,
+        pullAllFromCloud,
       }}
     >
       {children}

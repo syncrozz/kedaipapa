@@ -53,6 +53,7 @@ export const SettingsPage: React.FC = () => {
     cloudSyncStatus,
     lastCloudSync,
     syncAllToCloud,
+    pullAllFromCloud,
   } = useStore();
 
   // Cloud Sync Feedback
@@ -63,11 +64,30 @@ export const SettingsPage: React.FC = () => {
     setIsCloudSyncing(true);
     setCloudSyncMsg(null);
     try {
+      await pullAllFromCloud();
       await syncAllToCloud();
-      setCloudSyncMsg('Data berjaya disegerakkan sepenuhnya ke Firebase Firestore!');
+      setCloudSyncMsg('Data berjaya diselaraskan sepenuhnya secara 2-hala dengan Firebase Firestore!');
       setTimeout(() => setCloudSyncMsg(null), 4000);
     } catch {
       setCloudSyncMsg('Gagal menyegerakkan data ke Cloud. Sila periksa sambungan internet.');
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  };
+
+  const handlePullFromCloud = async () => {
+    setIsCloudSyncing(true);
+    setCloudSyncMsg(null);
+    try {
+      const ok = await pullAllFromCloud();
+      if (ok) {
+        setCloudSyncMsg('Data terkini berjaya dimuat turun daripada Cloud Firestore!');
+      } else {
+        setCloudSyncMsg('Tiada data baharu atau ralat semasa memuat turun data.');
+      }
+      setTimeout(() => setCloudSyncMsg(null), 4000);
+    } catch {
+      setCloudSyncMsg('Gagal memuat turun data daripada Cloud.');
     } finally {
       setIsCloudSyncing(false);
     }
@@ -718,15 +738,29 @@ export const SettingsPage: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              id="settings-pull-cloud-btn"
+              onClick={handlePullFromCloud}
+              disabled={isCloudSyncing}
+              title="Muat turun data terkini daripada cloud (sesuai untuk telefon/tablet mendapatkan data dari desktop)"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-stone-300 text-stone-700 hover:bg-stone-50 disabled:opacity-50 transition shadow-xs cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 text-stone-600" />
+              <span>Tarik Data Terkini (Pull)</span>
+            </button>
+
+            <button
+              type="button"
+              id="settings-sync-all-btn"
               onClick={handleManualCloudSync}
               disabled={isCloudSyncing}
+              title="Segerakkan kedua-dua hala (tarik data terkini dan tolak perubahan tempatan ke Cloud)"
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-800 hover:bg-emerald-900 disabled:opacity-50 text-white transition shadow-xs cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isCloudSyncing ? 'animate-spin' : ''}`} />
-              <span>{isCloudSyncing ? 'Sedang Menyegerak...' : 'Segerakkan Semua Sekarang'}</span>
+              <span>{isCloudSyncing ? 'Sedang Menyegerak...' : 'Segerak 2-Hala'}</span>
             </button>
           </div>
         </div>
