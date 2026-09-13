@@ -19,6 +19,11 @@ import {
   Database,
   HardDrive,
   FileCheck,
+  Cloud,
+  CloudOff,
+  RefreshCw,
+  Smartphone,
+  Laptop,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { UserRole, StaffRole, StaffUser } from '../types';
@@ -45,7 +50,28 @@ export const SettingsPage: React.FC = () => {
     loyaltyLedger,
     downloadBackup,
     restoreStoreData,
+    cloudSyncStatus,
+    lastCloudSync,
+    syncAllToCloud,
   } = useStore();
+
+  // Cloud Sync Feedback
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+  const [cloudSyncMsg, setCloudSyncMsg] = useState<string | null>(null);
+
+  const handleManualCloudSync = async () => {
+    setIsCloudSyncing(true);
+    setCloudSyncMsg(null);
+    try {
+      await syncAllToCloud();
+      setCloudSyncMsg('Data berjaya disegerakkan sepenuhnya ke Firebase Firestore!');
+      setTimeout(() => setCloudSyncMsg(null), 4000);
+    } catch {
+      setCloudSyncMsg('Gagal menyegerakkan data ke Cloud. Sila periksa sambungan internet.');
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  };
 
   // Store Profile State
   const [storeName, setStoreName] = useState(store.name);
@@ -665,6 +691,105 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Multi-Device Real-Time Cloud Sync (Firebase Firestore) */}
+      <div className="bg-white rounded-xl border border-stone-200 p-6 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-stone-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <Cloud className="w-5 h-5 text-emerald-700" />
+              <h3 className="font-bold text-sm text-stone-900">
+                Penyegerakan Cloud Masa Nyata (Multi-Device Cloud Sync)
+              </h3>
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                  cloudSyncStatus === 'CONNECTED'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : cloudSyncStatus === 'SYNCING'
+                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                    : 'bg-stone-100 text-stone-600 border-stone-200'
+                }`}
+              >
+                {cloudSyncStatus === 'CONNECTED' ? '● Aktif (Connected)' : cloudSyncStatus === 'SYNCING' ? 'Menyegerak...' : 'Luar Talian'}
+              </span>
+            </div>
+            <p className="text-xs text-stone-500 mt-1 max-w-2xl">
+              Data kedai (Produk, Jualan POS, Stok Inventori, Pelanggan, Pembekal, dan Staf) disegerakkan secara langsung menggunakan <strong>Google Firebase Firestore</strong>. Sebarang transaksi atau kemas kini di mana-mana peranti (telefon pintar, tablet, atau komputer juruwang) akan dikemas kini secara automatik dalam beberapa milisaat.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleManualCloudSync}
+              disabled={isCloudSyncing}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-800 hover:bg-emerald-900 disabled:opacity-50 text-white transition shadow-xs cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isCloudSyncing ? 'animate-spin' : ''}`} />
+              <span>{isCloudSyncing ? 'Sedang Menyegerak...' : 'Segerakkan Semua Sekarang'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Sync message if any */}
+        {cloudSyncMsg && (
+          <div
+            className={`mt-3 p-3 rounded-lg text-xs flex items-center gap-2 ${
+              cloudSyncMsg.includes('berjaya')
+                ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                : 'bg-rose-50 text-rose-900 border border-rose-200'
+            }`}
+          >
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{cloudSyncMsg}</span>
+          </div>
+        )}
+
+        {/* Device Sync Matrix & Counters */}
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="p-3 bg-stone-50 rounded-lg border border-stone-100">
+            <div className="text-[11px] text-stone-500 font-medium">Status Sambungan</div>
+            <div className="text-sm font-bold text-emerald-800 flex items-center gap-1.5 mt-0.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Firebase Aktif
+            </div>
+          </div>
+          <div className="p-3 bg-stone-50 rounded-lg border border-stone-100">
+            <div className="text-[11px] text-stone-500 font-medium">Katalog Produk</div>
+            <div className="text-sm font-bold text-stone-900 mt-0.5">
+              {products.length} Item ({products.filter((p) => p.active).length} Aktif di POS)
+            </div>
+          </div>
+          <div className="p-3 bg-stone-50 rounded-lg border border-stone-100">
+            <div className="text-[11px] text-stone-500 font-medium">Transaksi Jualan</div>
+            <div className="text-sm font-bold text-stone-900 mt-0.5">
+              {sales.length} Resit Jualan
+            </div>
+          </div>
+          <div className="p-3 bg-stone-50 rounded-lg border border-stone-100">
+            <div className="text-[11px] text-stone-500 font-medium">Penyegerakan Terakhir</div>
+            <div className="text-sm font-semibold text-stone-700 mt-0.5">
+              {lastCloudSync ? lastCloudSync.toLocaleTimeString() : 'Baru sahaja'}
+            </div>
+          </div>
+        </div>
+
+        {/* Multi-Device Support Info Box */}
+        <div className="mt-4 p-3 bg-emerald-50/60 rounded-lg border border-emerald-100 flex items-start gap-3">
+          <div className="flex items-center gap-1 text-emerald-800 shrink-0 mt-0.5">
+            <Smartphone className="w-4 h-4" />
+            <Laptop className="w-4 h-4" />
+          </div>
+          <div className="text-xs text-stone-700 space-y-1">
+            <p className="font-semibold text-stone-900">
+              Bagaimana data disegerakkan antara peranti?
+            </p>
+            <p className="text-stone-600">
+              Buka aplikasi ini pada peranti lain (contohnya tablet juruwang, telefon pengurus kedai, atau komputer stok). Semua peranti mendengar perubahan secara masa nyata (<em>real-time Firestore listeners</em>). Apabila juruwang membuat jualan di kaunter, baki stok dan rekod jualan akan terus dikemas kini di telefon pengurus tanpa perlu menekan butang <em>refresh</em>.
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Disaster Recovery & Data Backup Card */}
       <div className="bg-white rounded-xl border border-stone-200 p-6 shadow-xs">

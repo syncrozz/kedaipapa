@@ -36,6 +36,7 @@ import { formatCurrency, formatDateTime } from '../services/formatters';
 import { CsvService } from '../services/csvService';
 import { DuplicateAuditService, DuplicateAuditGroup } from '../services/duplicateAuditService';
 import { SmartInputService } from '../services/smartInputService';
+import { ProductDeleteEligibility } from '../services/productService';
 import { CsvImportModal } from '../components/common/CsvImportModal';
 import { DuplicateAuditModal } from '../components/common/DuplicateAuditModal';
 
@@ -50,6 +51,8 @@ export const ProductsPage: React.FC = () => {
     updateProduct,
     toggleProductActive,
     deleteProduct,
+    deactivateProduct,
+    checkProductDeleteEligibility,
     isSkuAvailable,
     isAdminMode,
     requireAdmin,
@@ -64,6 +67,7 @@ export const ProductsPage: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [deletingEligibility, setDeletingEligibility] = useState<ProductDeleteEligibility | null>(null);
   const [selectedProductForHistory, setSelectedProductForHistory] = useState<Product | null>(null);
   const [isCsvImportOpen, setIsCsvImportOpen] = useState(false);
   const [isDuplicateAuditOpen, setIsDuplicateAuditOpen] = useState(false);
@@ -173,7 +177,12 @@ export const ProductsPage: React.FC = () => {
   };
 
   const handleDeleteClick = (p: Product) => {
-    requireAdmin(() => setDeletingProduct(p), `Padam Produk ${p.name}`);
+    const elig = checkProductDeleteEligibility(p.id);
+    const actionLabel = elig.hasHistoricalReferences ? 'Nyahaktifkan Produk' : 'Padam Produk';
+    requireAdmin(() => {
+      setDeletingEligibility(elig);
+      setDeletingProduct(p);
+    }, `${actionLabel} ${p.name}`);
   };
 
   const handleImportCsvClick = () => {
@@ -329,13 +338,25 @@ export const ProductsPage: React.FC = () => {
 
   const handleConfirmDelete = () => {
     if (!deletingProduct) return;
-    const result = deleteProduct(deletingProduct.id);
-    setDeletingProduct(null);
-    setNotification({
-      type: result.success ? 'success' : 'warning',
-      message: result.message,
-    });
-    setTimeout(() => setNotification(null), 6000);
+    if (deletingEligibility?.hasHistoricalReferences) {
+      const result = deactivateProduct(deletingProduct.id);
+      setDeletingProduct(null);
+      setDeletingEligibility(null);
+      setNotification({
+        type: result.success ? 'success' : 'warning',
+        message: result.message,
+      });
+    } else {
+      const confirmWithStock = deletingProduct.currentStock > 0;
+      const result = deleteProduct(deletingProduct.id, confirmWithStock);
+      setDeletingProduct(null);
+      setDeletingEligibility(null);
+      setNotification({
+        type: result.success ? 'success' : 'warning',
+        message: result.message,
+      });
+    }
+    setTimeout(() => setNotification(null), 5000);
   };
 
   // Profit calculation for add/edit preview
@@ -716,49 +737,70 @@ export const ProductsPage: React.FC = () => {
 
                       {/* Actions */}
                       <td className="px-5 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            title={p.active ? 'Deactivate product (hides from POS)' : 'Activate product for POS'}
-                            onClick={() => handleToggleActiveClick(p)}
-                            className={`p-1.5 rounded-md transition ${
-                              p.active
-                                ? 'text-stone-400 hover:text-amber-600 hover:bg-amber-50'
-                                : 'text-stone-400 hover:text-emerald-600 hover:bg-emerald-50'
-                            }`}
-                          >
-                            <Power className="w-3.5 h-3.5" />
-                          </button>
+                        {(() => {
+                          const eligibility = checkProductDeleteEligibility(p.id);
+                          return (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedProductForHistory(p)}
+                                title="Lihat sejarah pembelian dan kos"
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 rounded-md transition"
+                              >
+                                <History className="w-3 h-3" />
+                                <span>Sejarah</span>
+                              </button>
 
-                          <button
-                            type="button"
-                            onClick={() => setSelectedProductForHistory(p)}
-                            title="View purchase and cost history"
-                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 rounded-md transition"
-                          >
-                            <History className="w-3 h-3" />
-                            <span>History</span>
-                          </button>
+                              <button
+                                type="button"
+                                onClick={() => handleEditClick(p)}
+                                title="Kemaskini maklumat produk (PIN Admin diperlukan)"
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-stone-700 hover:text-stone-950 bg-stone-100 hover:bg-stone-200 rounded-md transition"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                                <span>Edit</span>
+                              </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleEditClick(p)}
-                            title="Edit product details (Admin PIN required)"
-                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-stone-700 hover:text-stone-950 bg-stone-100 hover:bg-stone-200 rounded-md transition"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                            <span>Edit</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteClick(p)}
-                            title="Safe remove or deactivate (Admin PIN required)"
-                            className="p-1.5 rounded-md text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                              {eligibility.hasHistoricalReferences ? (
+                                p.active ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteClick(p)}
+                                    title="Nyahaktifkan Produk (Mempunyai rekod sejarah)"
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-800 hover:text-amber-950 bg-amber-50 hover:bg-amber-100 rounded-md transition"
+                                  >
+                                    <Power className="w-3 h-3" />
+                                    <span>Nyahaktif</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleActiveClick(p)}
+                                    title="Aktifkan semula produk untuk jualan POS"
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 rounded-md transition"
+                                  >
+                                    <Power className="w-3 h-3" />
+                                    <span>Aktifkan</span>
+                                  </button>
+                                )
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteClick(p)}
+                                  title={
+                                    p.currentStock > 0
+                                      ? 'Padam Produk Bersama Stok Semasa'
+                                      : 'Padam Produk Secara Kekal'
+                                  }
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 rounded-md transition"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>Padam</span>
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   );
@@ -1151,50 +1193,122 @@ export const ProductsPage: React.FC = () => {
         </form>
       </Modal>
 
-      {/* CONFIRM DELETE / DEACTIVATE MODAL (Section 19) */}
-      <Modal
-        id="delete-product-modal"
-        isOpen={!!deletingProduct}
-        onClose={() => setDeletingProduct(null)}
-        title="Remove / Deactivate Product"
-        subtitle={`Safety check for: ${deletingProduct?.name}`}
-      >
-        <div className="space-y-4 text-sm text-stone-600">
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
-            <ShieldCheck className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <strong>Non-Destructive Audit Rule:</strong>
-              <p>
-                Products with historical sales or inventory movements cannot be hard-deleted, as doing so would invalidate past gross profit reports and mathematical traceability equations.
-              </p>
-              <p className="font-semibold">
-                Such products will be automatically converted to <code>INACTIVE</code> status instead.
-              </p>
+      {/* CONFIRM DELETE / DEACTIVATE MODAL (Scenarios A, B, C) */}
+      {deletingProduct && deletingEligibility && (
+        <Modal
+          id="delete-product-modal"
+          isOpen={!!deletingProduct}
+          onClose={() => {
+            setDeletingProduct(null);
+            setDeletingEligibility(null);
+          }}
+          title={
+            deletingEligibility.hasHistoricalReferences
+              ? 'Nyahaktifkan Produk'
+              : deletingProduct.currentStock > 0
+              ? 'Padam Produk Bersama Stok Semasa'
+              : 'Padam Produk Secara Kekal'
+          }
+          subtitle={`Pengesahan Tindakan: ${deletingProduct.name} (${deletingProduct.sku})`}
+        >
+          <div className="space-y-4 text-sm text-stone-600">
+            {deletingEligibility.hasHistoricalReferences ? (
+              // Scenario B: Has historical references
+              <div className="space-y-3">
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
+                  <ShieldCheck className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <strong className="text-amber-950 font-semibold">Integriti Rekod Sejarah Dipelihara</strong>
+                    <p>
+                      Produk ini mempunyai rekod sejarah jualan, pembelian atau inventori dan tidak boleh dipadam.
+                    </p>
+                    <p className="text-amber-800">
+                      Demi memelihara ketepatan lejar perakaunan, COGS, dan laporan sejarah, produk ini hanya boleh dinyahaktifkan.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-700 space-y-1.5">
+                  <p className="font-semibold text-stone-900">Nyahaktifkan produk ini?</p>
+                  <ul className="list-disc list-inside space-y-1 text-stone-600">
+                    <li>Rekod jualan, pembelian dan inventori lama akan dikekalkan.</li>
+                    <li>Produk tidak akan lagi muncul dalam katalog jualan.</li>
+                    <li>Kod SKU (<code>{deletingProduct.sku}</code>) akan kekal dikhaskan untuk integriti data.</li>
+                  </ul>
+                </div>
+              </div>
+            ) : deletingProduct.currentStock > 0 ? (
+              // Scenario C: No history but stock > 0
+              <div className="space-y-3">
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
+                  <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <strong className="text-amber-950 font-semibold">Amaran Baki Stok Semasa</strong>
+                    <p>
+                      Produk ini mempunyai baki stok semasa sebanyak <strong>{deletingProduct.currentStock} unit</strong> tetapi tiada rekod sejarah jualan atau pembelian.
+                    </p>
+                    <p className="text-amber-800">
+                      Padam produk ini bersama stok semasa secara kekal? Tindakan ini tidak boleh dibatalkan.
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs text-stone-500">
+                  Kod SKU (<code>{deletingProduct.sku}</code>) akan dilepaskan dan boleh digunakan semula jika diperlukan.
+                </p>
+              </div>
+            ) : (
+              // Scenario A: No history and 0 stock
+              <div className="space-y-3">
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 flex items-start gap-2.5">
+                  <Trash2 className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <strong className="text-rose-950 font-semibold">Padam Kekal (Tiada Sejarah)</strong>
+                    <p>
+                      Padam produk ini secara kekal? Produk ini tiada rekod sejarah.
+                    </p>
+                    <p className="text-rose-700 font-medium">
+                      Tindakan ini tidak boleh dibatalkan.
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs text-stone-500">
+                  Produk akan dipadamkan sepenuhnya dari sistem dan kod SKU (<code>{deletingProduct.sku}</code>) akan dilepaskan untuk kegunaan semula.
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeletingProduct(null);
+                  setDeletingEligibility(null);
+                }}
+                className="px-4 py-2 text-xs font-medium text-stone-700 rounded-lg border border-stone-200 hover:bg-stone-50 cursor-pointer transition"
+              >
+                Batal
+              </button>
+              {deletingEligibility.hasHistoricalReferences ? (
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition cursor-pointer"
+                >
+                  Nyahaktifkan
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition cursor-pointer"
+                >
+                  {deletingProduct.currentStock > 0 ? 'Padam Kekal Bersama Stok' : 'Padam Kekal'}
+                </button>
+              )}
             </div>
           </div>
-
-          <p className="text-xs">
-            Are you sure you want to remove <strong>{deletingProduct?.name}</strong> (SKU: <code>{deletingProduct?.sku}</code>)?
-          </p>
-
-          <div className="flex justify-end gap-2 pt-4 border-t border-stone-100">
-            <button
-              type="button"
-              onClick={() => setDeletingProduct(null)}
-              className="px-4 py-2 text-xs font-medium text-stone-700 rounded-lg border border-stone-200 hover:bg-stone-50 cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleConfirmDelete}
-              className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition cursor-pointer"
-            >
-              Confirm Removal
-            </button>
-          </div>
-        </div>
-      </Modal>
+        </Modal>
+      )}
 
       {/* Product Purchase & Cost History Modal */}
       {selectedProductForHistory && (

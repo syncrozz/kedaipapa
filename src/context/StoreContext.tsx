@@ -39,6 +39,7 @@ import { CustomerService, CreateCustomerInput, UpdateCustomerInput } from '../se
 import { LoyaltyService } from '../services/loyaltyService';
 import { StaffService, CreateStaffInput, UpdateStaffInput } from '../services/staffService';
 import { SmartInputService } from '../services/smartInputService';
+import { ProductService, ProductDeleteEligibility } from '../services/productService';
 import {
   StorageService,
   STORAGE_KEYS,
@@ -46,6 +47,7 @@ import {
 } from '../services/storageService';
 import { AdminAuthService } from '../services/adminAuthService';
 import { AdminPinModal } from '../components/common/AdminPinModal';
+import { FirebaseService, CloudSyncStatus } from '../services/firebaseService';
 
 interface StoreContextType {
   store: Store;
@@ -60,6 +62,10 @@ interface StoreContextType {
   staffUsers: StaffUser[];
   activeStaff: StaffUser | null;
   isLoading: boolean;
+  // Multi-Device Cloud Sync (Firebase Firestore)
+  cloudSyncStatus: CloudSyncStatus;
+  lastCloudSync: Date | null;
+  syncAllToCloud: () => Promise<void>;
   // Admin Mode Controls (Part A & Part J)
   isAdminMode: boolean;
   isPinModalOpen: boolean;
@@ -74,7 +80,12 @@ interface StoreContextType {
   commitProductsUpsertImport: (payload: CommitUpsertPayload) => UpsertImportCommitResult;
   updateProduct: (id: string, updates: Partial<Product>) => Product;
   toggleProductActive: (id: string) => void;
-  deleteProduct: (id: string) => { success: boolean; message: string };
+  deleteProduct: (
+    id: string,
+    confirmWithStock?: boolean
+  ) => { success: boolean; message: string; action?: 'DELETED' | 'BLOCKED' };
+  deactivateProduct: (id: string) => { success: boolean; message: string };
+  checkProductDeleteEligibility: (id: string) => ProductDeleteEligibility;
   isSkuAvailable: (sku: string, excludeProductId?: string) => boolean;
   recordStockIn: (productId: string, quantity: number, reason: string, referenceId?: string) => void;
   recordAdjustment: (productId: string, quantityChange: number, reason: string) => void;
@@ -143,29 +154,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
 
   const [products, setProducts] = useState<Product[]>(() => {
-    const parsed = StorageService.safeParse<Product[]>(
+    return StorageService.safeParse<Product[]>(
       localStorage.getItem(STORAGE_KEYS.PRODUCTS),
       INITIAL_PRODUCTS,
       (val) => Array.isArray(val)
     );
-    const testProd = INITIAL_PRODUCTS.find((p) => p.sku === 'TEST-001');
-    if (testProd && !parsed.some((p) => p.sku === 'TEST-001')) {
-      return [testProd, ...parsed];
-    }
-    return parsed;
   });
 
   const [movements, setMovements] = useState<InventoryMovement[]>(() => {
-    const parsed = StorageService.safeParse<InventoryMovement[]>(
+    return StorageService.safeParse<InventoryMovement[]>(
       localStorage.getItem(STORAGE_KEYS.MOVEMENTS),
       INITIAL_MOVEMENTS,
       (val) => Array.isArray(val)
     );
-    const testMov = INITIAL_MOVEMENTS.find((m) => m.id === 'mov-init-test-001');
-    if (testMov && !parsed.some((m) => m.productId === 'prod-test-001')) {
-      return [testMov, ...parsed];
-    }
-    return parsed;
   });
 
   const [sales, setSales] = useState<Sale[]>(() => {
@@ -258,6 +259,107 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(staffUsers));
   }, [staffUsers]);
+
+  // Multi-Device Cloud Sync State & Real-time Integration
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>('SYNCING');
+  const [lastCloudSync, setLastCloudSync] = useState<Date | null>(null);
+
+  const syncAllToCloud = async () => {
+    setCloudSyncStatus('SYNCING');
+    try {
+      await FirebaseService.syncStore(store);
+      for (const p of products) await FirebaseService.syncProduct(p);
+      for (const m of movements) await FirebaseService.syncMovement(m);
+      for (const s of sales) await FirebaseService.syncSale(s);
+      for (const sup of suppliers) await FirebaseService.syncSupplier(sup);
+      for (const pur of purchases) await FirebaseService.syncPurchase(pur);
+      for (const c of customers) await FirebaseService.syncCustomer(c);
+      for (const l of loyaltyLedger) await FirebaseService.syncLoyaltyEntry(l);
+      for (const stf of staffUsers) await FirebaseService.syncStaffUser(stf);
+      setCloudSyncStatus('CONNECTED');
+      setLastCloudSync(new Date());
+    } catch (err) {
+      console.warn('Manual cloud sync notice:', err);
+      setCloudSyncStatus('CONNECTED');
+    }
+  };
+
+  useEffect(() => {
+    let unsubStatus: (() => void) | undefined;
+    let isMounted = true;
+
+    async function initCloudSync() {
+      unsubStatus = FirebaseService.onStatusChange((status, lastSynced) => {
+        if (!isMounted) return;
+        setCloudSyncStatus(status);
+        setLastCloudSync(lastSynced);
+      });
+
+      // Validate connection to server
+      await FirebaseService.testConnection();
+
+      // Bootstrap initial seed data if cloud database is empty
+      await FirebaseService.bootstrapCloudDataIfEmpty({
+        store,
+        products,
+        movements,
+        sales,
+        suppliers,
+        purchases,
+        customers,
+        loyaltyLedger,
+        staffUsers,
+      });
+
+      // Real-time listener: receive updates instantly when another tablet/device updates data
+      FirebaseService.subscribeToRealtimeUpdates({
+        onProductsUpdated: (remoteProducts) => {
+          if (!isMounted || !remoteProducts || remoteProducts.length === 0) return;
+          setProducts(remoteProducts);
+        },
+        onMovementsUpdated: (remoteMovements) => {
+          if (!isMounted || !remoteMovements) return;
+          setMovements(remoteMovements);
+        },
+        onSalesUpdated: (remoteSales) => {
+          if (!isMounted || !remoteSales) return;
+          setSales(remoteSales);
+        },
+        onSuppliersUpdated: (remoteSuppliers) => {
+          if (!isMounted || !remoteSuppliers) return;
+          setSuppliers(remoteSuppliers);
+        },
+        onPurchasesUpdated: (remotePurchases) => {
+          if (!isMounted || !remotePurchases) return;
+          setPurchases(remotePurchases);
+        },
+        onCustomersUpdated: (remoteCustomers) => {
+          if (!isMounted || !remoteCustomers) return;
+          setCustomers(remoteCustomers);
+        },
+        onLoyaltyUpdated: (remoteLoyalty) => {
+          if (!isMounted || !remoteLoyalty) return;
+          setLoyaltyLedger(remoteLoyalty);
+        },
+        onStaffUpdated: (remoteStaff) => {
+          if (!isMounted || !remoteStaff) return;
+          setStaffUsers(remoteStaff);
+        },
+        onStoreUpdated: (remoteStore) => {
+          if (!isMounted || !remoteStore) return;
+          setStore(remoteStore);
+        },
+      });
+    }
+
+    initCloudSync();
+
+    return () => {
+      isMounted = false;
+      if (unsubStatus) unsubStatus();
+      FirebaseService.unsubscribeAll();
+    };
+  }, []);
 
   // Admin Mode state (SES 4.4 Locked Part A & Part J)
   const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
@@ -380,6 +482,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     setProducts((prev) => [createdProduct, ...prev]);
+    FirebaseService.syncProduct(createdProduct);
 
     // Data Integrity Principle: If opening stock > 0, log traceable STOCK_IN movement!
     if (createdProduct.currentStock > 0) {
@@ -397,6 +500,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         createdAt: now,
       };
       setMovements((prev) => [initialMovement, ...prev]);
+      FirebaseService.syncMovement(initialMovement);
     }
 
     return createdProduct;
@@ -587,6 +691,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       })
     );
 
+    FirebaseService.syncProduct(updatedResult);
     return updatedResult;
   };
 
@@ -600,35 +705,90 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   /**
-   * Safe Product Removal:
-   * Rejects destructive hard-deletion if product has historical sales or movements,
-   * switching to soft deactivation (active = false) to maintain audit integrity.
+   * Determine delete eligibility for a product:
+   * Inspects historical sales, purchases, movements, and current stock.
    */
-  const deleteProduct = (id: string): { success: boolean; message: string } => {
+  const checkProductDeleteEligibility = (id: string): ProductDeleteEligibility => {
     const target = products.find((p) => p.id === id);
     if (!target) {
-      return { success: false, message: 'Product not found.' };
-    }
-
-    const hasSales = sales.some((s) => s.items.some((i) => i.productId === id));
-    const nonOpeningMovements = movements.filter(
-      (m) => m.productId === id && m.reason.toLowerCase() !== 'opening stock'
-    );
-
-    if (hasSales || nonOpeningMovements.length > 0) {
-      updateProduct(id, { active: false });
       return {
-        success: false,
-        message: `Product "${target.name}" has historical transactions or inventory movements. It was safely deactivated (Active: false) to preserve audit trails.`,
+        canHardDelete: false,
+        hasHistoricalReferences: false,
+        hasStockWithoutHistory: false,
+        historyDetails: { salesCount: 0, purchasesCount: 0, movementsCount: 0 },
+        suggestedAction: 'DEACTIVATE',
+        reason: 'Produk tidak dijumpai.',
       };
     }
+    return ProductService.checkDeleteEligibility(target, sales, purchases, movements);
+  };
 
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-    setMovements((prev) => prev.filter((m) => m.productId !== id));
-    return {
-      success: true,
-      message: `Product "${target.name}" was successfully removed.`,
-    };
+  /**
+   * Product Deletion Semantics:
+   * HARD DELETE is ONLY permitted when product has zero authoritative historical references
+   * (Sales, SaleItems, Purchases, PurchaseItems, InventoryMovements beyond opening, Returns, Adjustments).
+   * If any historical reference exists, hard delete is strictly rejected.
+   * If product has currentStock > 0 without history, explicit stock confirmation is required.
+   */
+  const deleteProduct = (
+    id: string,
+    confirmWithStock: boolean = false
+  ): { success: boolean; message: string; action?: 'DELETED' | 'BLOCKED' } => {
+    const target = products.find((p) => p.id === id);
+    if (!target) {
+      return { success: false, message: 'Produk tidak dijumpai.', action: 'BLOCKED' };
+    }
+
+    try {
+      const outcome = ProductService.hardDeleteProduct(
+        id,
+        products,
+        movements,
+        sales,
+        purchases,
+        confirmWithStock
+      );
+      setProducts(outcome.updatedProducts);
+      setMovements(outcome.updatedMovements);
+      FirebaseService.deleteProduct(id);
+      return {
+        success: true,
+        message: outcome.message,
+        action: 'DELETED',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Tidak dapat memadam produk.',
+        action: 'BLOCKED',
+      };
+    }
+  };
+
+  /**
+   * Deactivate a product:
+   * Sets active = false while preserving all historical references, audit trails, and financial records.
+   */
+  const deactivateProduct = (id: string): { success: boolean; message: string } => {
+    const target = products.find((p) => p.id === id);
+    if (!target) {
+      return { success: false, message: 'Produk tidak dijumpai.' };
+    }
+
+    try {
+      const outcome = ProductService.deactivateProduct(id, products);
+      setProducts(outcome.updatedProducts);
+      FirebaseService.syncProduct(outcome.deactivatedProduct);
+      return {
+        success: true,
+        message: outcome.message,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Tidak dapat menyahaktifkan produk.',
+      };
+    }
   };
 
   /**
@@ -662,6 +822,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       prev.map((p) => (p.id === productId ? updatedProduct : p))
     );
     setMovements((prev) => [movement, ...prev]);
+    FirebaseService.syncProduct(updatedProduct);
+    FirebaseService.syncMovement(movement);
   };
 
   /**
@@ -696,6 +858,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       prev.map((p) => (p.id === productId ? updatedProduct : p))
     );
     setMovements((prev) => [movement, ...prev]);
+    FirebaseService.syncProduct(updatedProduct);
+    FirebaseService.syncMovement(movement);
   };
 
   /**
@@ -724,6 +888,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       prev.map((p) => (p.id === productId ? updatedProduct : p))
     );
     setMovements((prev) => [movement, ...prev]);
+    FirebaseService.syncProduct(updatedProduct);
+    FirebaseService.syncMovement(movement);
   };
 
   /**
@@ -764,6 +930,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Add sale record
     setSales((prev) => [result.sale, ...prev]);
 
+    // Cloud sync for sale, updated products, and movements
+    FirebaseService.syncSale(result.sale);
+    result.updatedProducts.forEach((p) => FirebaseService.syncProduct(p));
+    result.newMovements.forEach((m) => FirebaseService.syncMovement(m));
+
     // Handle Loyalty point accumulation for customer if enabled
     const opts = typeof optionsOrDiscount === 'object' ? optionsOrDiscount : {};
     const customerId = opts.customerId || result.sale.customerId;
@@ -781,6 +952,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         );
         if (newEntry) {
           setLoyaltyLedger((prev) => [newEntry, ...prev]);
+          FirebaseService.syncLoyaltyEntry(newEntry);
         }
       }
     }
@@ -796,12 +968,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addCustomer = (input: CreateCustomerInput): Customer => {
     const created = CustomerService.createCustomer(input, customers);
     setCustomers((prev) => [created, ...prev]);
+    FirebaseService.syncCustomer(created);
     return created;
   };
 
   const updateCustomer = (id: string, updates: UpdateCustomerInput): Customer => {
     const updated = CustomerService.updateCustomer(id, updates, customers);
     setCustomers((prev) => prev.map((c) => (c.id === id ? updated : c)));
+    FirebaseService.syncCustomer(updated);
     return updated;
   };
 
@@ -825,6 +999,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
     }
     setCustomers((prev) => prev.filter((c) => c.id !== id));
+    FirebaseService.deleteCustomer(id);
     return {
       success: true,
       message: `Customer "${target.customerName}" was successfully removed.`,
@@ -837,6 +1012,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const entry = LoyaltyService.awardPointsForSale(sale, customerId, loyaltyLedger, ratio);
     if (entry) {
       setLoyaltyLedger((prev) => [entry, ...prev]);
+      FirebaseService.syncLoyaltyEntry(entry);
     }
     return entry;
   };
@@ -855,6 +1031,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       description
     );
     setLoyaltyLedger((prev) => [entry, ...prev]);
+    FirebaseService.syncLoyaltyEntry(entry);
     return entry;
   };
 
@@ -862,6 +1039,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addStaff = (input: CreateStaffInput): StaffUser => {
     const created = StaffService.createStaff(input, staffUsers);
     setStaffUsers((prev) => [created, ...prev]);
+    FirebaseService.syncStaffUser(created);
     return created;
   };
 
@@ -871,6 +1049,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (activeStaff && activeStaff.id === id) {
       setActiveStaff(updated);
     }
+    FirebaseService.syncStaffUser(updated);
     return updated;
   };
 
@@ -887,12 +1066,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addSupplier = (input: CreateSupplierInput): Supplier => {
     const created = SupplierService.createSupplier(input, suppliers);
     setSuppliers((prev) => [created, ...prev]);
+    FirebaseService.syncSupplier(created);
     return created;
   };
 
   const updateSupplier = (id: string, updates: UpdateSupplierInput): Supplier => {
     const updated = SupplierService.updateSupplier(id, updates, suppliers);
     setSuppliers((prev) => prev.map((s) => (s.id === id ? updated : s)));
+    FirebaseService.syncSupplier(updated);
     return updated;
   };
 
@@ -918,6 +1099,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     setSuppliers((prev) => prev.filter((s) => s.id !== id));
+    FirebaseService.deleteSupplier(id);
     return {
       success: true,
       message: `Supplier "${target.supplierName}" was successfully removed.`,
@@ -929,6 +1111,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const productsMap = new Map<string, Product>(products.map((p) => [p.id, p]));
     const draft = PurchasingService.createDraftPurchase(input, suppliersMap, productsMap, purchases);
     setPurchases((prev) => [draft, ...prev]);
+    FirebaseService.syncPurchase(draft);
     return draft;
   };
 
@@ -962,6 +1145,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       prev.map((p) => (p.id === purchaseId ? result.completedPurchase : p))
     );
 
+    FirebaseService.syncPurchase(result.completedPurchase);
+    result.updatedProducts.forEach((p) => FirebaseService.syncProduct(p));
+    result.newMovements.forEach((m) => FirebaseService.syncMovement(m));
+
     return result;
   };
 
@@ -975,15 +1162,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setPurchases((prev) =>
       prev.map((p) => (p.id === purchaseId ? cancelled : p))
     );
+    FirebaseService.syncPurchase(cancelled);
     return cancelled;
   };
 
   const updateStoreDetails = (details: Partial<Store>) => {
-    setStore((prev) => ({
-      ...prev,
+    const updatedStore = {
+      ...store,
       ...details,
       updatedAt: new Date().toISOString(),
-    }));
+    };
+    setStore(updatedStore);
+    FirebaseService.syncStore(updatedStore);
   };
 
   const resetToDemo = () => {
@@ -1079,6 +1269,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateProduct,
         toggleProductActive,
         deleteProduct,
+        deactivateProduct,
+        checkProductDeleteEligibility,
         isSkuAvailable,
         recordStockIn,
         recordAdjustment,
@@ -1108,6 +1300,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         exportStoreData,
         downloadBackup,
         restoreStoreData,
+        cloudSyncStatus,
+        lastCloudSync,
+        syncAllToCloud,
       }}
     >
       {children}

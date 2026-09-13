@@ -16,6 +16,9 @@ import {
   RotateCcw,
   Shield,
   ShieldCheck,
+  Cloud,
+  CloudOff,
+  RefreshCw,
 } from 'lucide-react';
 import { ActivePage } from '../../types';
 import { useStore } from '../../context/StoreContext';
@@ -31,7 +34,17 @@ export const AppShell: React.FC<AppShellProps> = ({
   onNavigate,
   children,
 }) => {
-  const { store, currentUser, resetToDemo, isAdminMode, openPinModal, exitAdminMode } = useStore();
+  const {
+    store,
+    currentUser,
+    resetToDemo,
+    isAdminMode,
+    openPinModal,
+    exitAdminMode,
+    cloudSyncStatus,
+    lastCloudSync,
+    syncAllToCloud,
+  } = useStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
@@ -124,8 +137,41 @@ export const AppShell: React.FC<AppShellProps> = ({
               })}
             </nav>
 
-            {/* Right: Admin Mode Button & Active Role Badge & POS Quick Launch */}
+            {/* Right: Cloud Sync, Admin Mode Button, Role Badge & POS Quick Launch */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              {/* Cloud Sync Status Indicator */}
+              <button
+                type="button"
+                id="header-cloud-sync-btn"
+                onClick={() => syncAllToCloud()}
+                title={`Firebase Cloud Sync: ${cloudSyncStatus} ${lastCloudSync ? `(Terakhir disegerakkan: ${lastCloudSync.toLocaleTimeString()})` : ''}. Klik untuk segerakkan data ke peranti lain sekarang.`}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 transition cursor-pointer text-xs"
+              >
+                {cloudSyncStatus === 'CONNECTED' ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="hidden sm:inline font-medium text-[11px] text-emerald-800">
+                      Cloud Sync Aktif
+                    </span>
+                  </>
+                ) : cloudSyncStatus === 'SYNCING' ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                    <span className="hidden sm:inline font-medium text-[11px] text-amber-800">
+                      Menyegerak...
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <CloudOff className="w-3.5 h-3.5 text-stone-400" />
+                    <span className="hidden sm:inline font-medium text-[11px] text-stone-600">
+                      Luar Talian
+                    </span>
+                  </>
+                )}
+              </button>
+
               {/* Admin Mode Toggle Button (SES 4.4 Locked Part A: Default Orange [ Admin ], Active Green [ Admin Mode Aktif ]) */}
               <button
                 type="button"

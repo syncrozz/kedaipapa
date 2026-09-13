@@ -910,7 +910,7 @@ export class Part08VerificationRunner {
       results.push({
         code: 'TEST-08-POS-A',
         name: 'POS: Active Catalog Only (Hide Inactive)',
-        category: 'POS_SALES',
+        category: 'Transactions',
         passed: passCatalogFiltering,
         message: passCatalogFiltering
           ? 'POS catalog strictly excludes inactive products and keeps active (normal, low, zero stock).'
@@ -924,7 +924,7 @@ export class Part08VerificationRunner {
       results.push({
         code: 'TEST-08-POS-B',
         name: 'POS: Search Excludes Inactive by Name',
-        category: 'POS_SALES',
+        category: 'Transactions',
         passed: passNameSearch,
         message: passNameSearch
           ? 'Searching for inactive product by name returns 0 results in POS.'
@@ -938,7 +938,7 @@ export class Part08VerificationRunner {
       results.push({
         code: 'TEST-08-POS-C',
         name: 'POS: Search Excludes Inactive by SKU',
-        category: 'POS_SALES',
+        category: 'Transactions',
         passed: passSkuSearch,
         message: passSkuSearch
           ? 'Searching for inactive product by SKU returns 0 results in POS.'
@@ -954,7 +954,7 @@ export class Part08VerificationRunner {
       results.push({
         code: 'TEST-08-POS-D',
         name: 'POS: Categories Derived From Active Products Only',
-        category: 'POS_SALES',
+        category: 'Transactions',
         passed: passCategoryDerivation,
         message: passCategoryDerivation
           ? 'POS categories list excludes categories that only belong to inactive products.'
@@ -964,7 +964,7 @@ export class Part08VerificationRunner {
       results.push({
         code: 'TEST-08-POS-ERR',
         name: 'POS: Catalog Filtering Error',
-        category: 'POS_SALES',
+        category: 'Transactions',
         passed: false,
         message: e.message,
       });

@@ -14,6 +14,7 @@ import {
   Truck,
   ClipboardCheck,
   UploadCloud,
+  Trash2,
 } from 'lucide-react';
 import { VerificationRunner, VerificationTestResult } from '../../services/verificationRunner';
 import { Part02VerificationRunner, Part02TestResult } from '../../services/part02VerificationRunner';
@@ -24,11 +25,16 @@ import { Part06VerificationRunner, Part06TestResult } from '../../services/part0
 import { Part07VerificationRunner, Part07TestResult } from '../../services/part07VerificationRunner';
 import { Part08VerificationRunner, Part08TestResult } from '../../services/part08VerificationRunner';
 import { CsvImportVerificationRunner, CsvImportTestResult } from '../../services/csvImportVerificationRunner';
+import { ProductLifecycleVerificationRunner, ProductLifecycleTestResult } from '../../services/productLifecycleVerificationRunner';
 
 export const VerificationAuditSuite: React.FC = () => {
   const [activeSuiteTab, setActiveSuiteTab] = useState<
-    'ALL' | 'CSV_IMPORT' | 'PART_08' | 'PART_07' | 'PART_06' | 'PART_05' | 'PART_04' | 'PART_03' | 'PART_02' | 'PART_01'
-  >('CSV_IMPORT');
+    'ALL' | 'PRODUCT_LIFECYCLE' | 'CSV_IMPORT' | 'PART_08' | 'PART_07' | 'PART_06' | 'PART_05' | 'PART_04' | 'PART_03' | 'PART_02' | 'PART_01'
+  >('PRODUCT_LIFECYCLE');
+
+  const [productLifecycleTests, setProductLifecycleTests] = useState<ProductLifecycleTestResult[]>(() =>
+    ProductLifecycleVerificationRunner.runAllTests()
+  );
 
   const [csvImportTests, setCsvImportTests] = useState<CsvImportTestResult[]>(() =>
     CsvImportVerificationRunner.runAllTests()
@@ -62,6 +68,7 @@ export const VerificationAuditSuite: React.FC = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Overall counts
+  const productLifecyclePassed = productLifecycleTests.filter((t) => t.passed).length;
   const csvImportPassed = csvImportTests.filter((t) => t.passed).length;
   const part08Passed = part08Tests.filter((t) => t.passed).length;
   const part07Passed = part07Tests.filter((t) => t.status === 'PASSED').length;
@@ -73,6 +80,7 @@ export const VerificationAuditSuite: React.FC = () => {
   const part06Passed = part06Tests.filter((t) => t.status === 'PASSED').length;
 
   const totalTestsCount =
+    productLifecycleTests.length +
     csvImportTests.length +
     part08Tests.length +
     part07Tests.length +
@@ -84,6 +92,7 @@ export const VerificationAuditSuite: React.FC = () => {
     part06Tests.length;
 
   const totalPassedCount =
+    productLifecyclePassed +
     csvImportPassed +
     part08Passed +
     part07Passed +
@@ -99,6 +108,7 @@ export const VerificationAuditSuite: React.FC = () => {
   const handleRerun = () => {
     setIsRunning(true);
     setTimeout(() => {
+      setProductLifecycleTests(ProductLifecycleVerificationRunner.runAllTests());
       setCsvImportTests(CsvImportVerificationRunner.runAllTests());
       setPart08Tests(Part08VerificationRunner.runAllTests());
       setPart07Tests(Part07VerificationRunner.runAllTests());
@@ -222,6 +232,19 @@ export const VerificationAuditSuite: React.FC = () => {
 
         <button
           type="button"
+          onClick={() => setActiveSuiteTab('PRODUCT_LIFECYCLE')}
+          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+            activeSuiteTab === 'PRODUCT_LIFECYCLE'
+              ? 'bg-stone-900 text-white shadow-2xs'
+              : 'bg-white text-stone-700 hover:bg-stone-50 border border-stone-200'
+          }`}
+        >
+          <Trash2 className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Product Delete / Deactivate ({productLifecyclePassed}/{productLifecycleTests.length})</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveSuiteTab('CSV_IMPORT')}
           className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
             activeSuiteTab === 'CSV_IMPORT'
@@ -340,6 +363,77 @@ export const VerificationAuditSuite: React.FC = () => {
 
       {/* Test List Container */}
       <div className="divide-y divide-stone-200">
+        {/* PRODUCT LIFECYCLE & DELETION SEMANTICS TESTS */}
+        {(activeSuiteTab === 'ALL' || activeSuiteTab === 'PRODUCT_LIFECYCLE') && (
+          <div>
+            <div className="bg-stone-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-stone-700 border-b border-stone-200 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Trash2 className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Product Delete / Deactivate Semantics Suite (TEST A &ndash; P)</span>
+              </span>
+              <span className="text-emerald-700 font-mono font-semibold">
+                {productLifecyclePassed} / {productLifecycleTests.length} Passed
+              </span>
+            </div>
+
+            <div className="divide-y divide-stone-100">
+              {productLifecycleTests.map((t) => {
+                const isExpanded = expandedId === `prod-life-${t.code}`;
+                return (
+                  <div key={t.code} className="p-3.5 hover:bg-stone-50/70 transition">
+                    <div
+                      className="flex items-start justify-between gap-3 cursor-pointer select-none"
+                      onClick={() => setExpandedId(isExpanded ? null : `prod-life-${t.code}`)}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <span
+                          className={`inline-flex items-center justify-center font-mono font-bold text-[11px] px-2 py-0.5 rounded border shrink-0 mt-0.5 ${
+                            t.passed
+                              ? 'bg-emerald-100 text-emerald-900 border-emerald-200'
+                              : 'bg-rose-100 text-rose-900 border-rose-200'
+                          }`}
+                        >
+                          {t.code}
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-stone-900">{t.name}</span>
+                            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-stone-100 text-stone-600 border border-stone-200">
+                              {t.category}
+                            </span>
+                          </div>
+                          <p className="text-xs text-stone-600 mt-1">{t.message}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            t.passed
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border border-rose-200'
+                          }`}
+                        >
+                          {t.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="mt-3 pl-8 text-xs text-stone-600 bg-stone-50/80 p-2.5 rounded border border-stone-200 space-y-1">
+                        <p>
+                          <span className="font-semibold text-stone-700">Audit Details: </span>
+                          {t.details}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* CSV IMPORTER SAFE UPSERT TESTS */}
         {(activeSuiteTab === 'ALL' || activeSuiteTab === 'CSV_IMPORT') && (
           <div>
