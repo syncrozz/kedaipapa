@@ -838,6 +838,138 @@ export class Part08VerificationRunner {
       });
     }
 
+    // --- POS CATALOG ACTIVE FILTERING TESTS ---
+    try {
+      const activeProdNormal: Product = {
+        id: 'p-act-norm',
+        storeId: 'store-1',
+        sku: 'SKU-ACT-NORM',
+        name: 'Active Normal Biscuit',
+        category: 'Biscuits',
+        costPrice: 2.0,
+        sellingPrice: 3.5,
+        currentStock: 15,
+        minimumStock: 5,
+        active: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const activeProdLowStock: Product = {
+        id: 'p-act-low',
+        storeId: 'store-1',
+        sku: 'SKU-ACT-LOW',
+        name: 'Active Low Stock Milk',
+        category: 'Dairy',
+        costPrice: 4.0,
+        sellingPrice: 6.0,
+        currentStock: 2,
+        minimumStock: 5,
+        active: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const activeProdZeroStock: Product = {
+        id: 'p-act-zero',
+        storeId: 'store-1',
+        sku: 'SKU-ACT-ZERO',
+        name: 'Active Out Of Stock Bread',
+        category: 'Bakery',
+        costPrice: 1.5,
+        sellingPrice: 2.8,
+        currentStock: 0,
+        minimumStock: 5,
+        active: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const inactiveProdHighStock: Product = {
+        id: 'p-inact-high',
+        storeId: 'store-1',
+        sku: 'SKU-INACT-HIGH',
+        name: 'Inactive High Stock Rice',
+        category: 'Grains',
+        costPrice: 20.0,
+        sellingPrice: 28.0,
+        currentStock: 50,
+        minimumStock: 5,
+        active: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const testCatalog = [activeProdNormal, activeProdLowStock, activeProdZeroStock, inactiveProdHighStock];
+
+      // A & B: Active products included, inactive product completely excluded
+      const posCatalogAll = SalesService.filterPosCatalog(testCatalog, 'ALL', '');
+      const hasNormal = posCatalogAll.some((p) => p.id === activeProdNormal.id);
+      const hasLow = posCatalogAll.some((p) => p.id === activeProdLowStock.id);
+      const hasZero = posCatalogAll.some((p) => p.id === activeProdZeroStock.id);
+      const hasInactive = posCatalogAll.some((p) => p.id === inactiveProdHighStock.id);
+      const passCatalogFiltering = hasNormal && hasLow && hasZero && !hasInactive && posCatalogAll.length === 3;
+
+      results.push({
+        code: 'TEST-08-POS-A',
+        name: 'POS: Active Catalog Only (Hide Inactive)',
+        category: 'POS_SALES',
+        passed: passCatalogFiltering,
+        message: passCatalogFiltering
+          ? 'POS catalog strictly excludes inactive products and keeps active (normal, low, zero stock).'
+          : 'POS catalog failed to properly filter active vs inactive products.',
+      });
+
+      // C: Inactive product cannot be found via name search
+      const searchByName = SalesService.filterPosCatalog(testCatalog, 'ALL', 'Rice');
+      const passNameSearch = searchByName.length === 0;
+
+      results.push({
+        code: 'TEST-08-POS-B',
+        name: 'POS: Search Excludes Inactive by Name',
+        category: 'POS_SALES',
+        passed: passNameSearch,
+        message: passNameSearch
+          ? 'Searching for inactive product by name returns 0 results in POS.'
+          : 'Searching for inactive product returned results.',
+      });
+
+      // D: Inactive product cannot be found via SKU search
+      const searchBySku = SalesService.filterPosCatalog(testCatalog, 'ALL', 'SKU-INACT-HIGH');
+      const passSkuSearch = searchBySku.length === 0;
+
+      results.push({
+        code: 'TEST-08-POS-C',
+        name: 'POS: Search Excludes Inactive by SKU',
+        category: 'POS_SALES',
+        passed: passSkuSearch,
+        message: passSkuSearch
+          ? 'Searching for inactive product by SKU returns 0 results in POS.'
+          : 'Searching for inactive product by SKU returned results.',
+      });
+
+      // G: Category list derives strictly from active products
+      const posCategories = SalesService.getPosCategories(testCatalog);
+      const hasGrainCategory = posCategories.includes('Grains');
+      const hasBiscuitCategory = posCategories.includes('Biscuits');
+      const passCategoryDerivation = !hasGrainCategory && hasBiscuitCategory;
+
+      results.push({
+        code: 'TEST-08-POS-D',
+        name: 'POS: Categories Derived From Active Products Only',
+        category: 'POS_SALES',
+        passed: passCategoryDerivation,
+        message: passCategoryDerivation
+          ? 'POS categories list excludes categories that only belong to inactive products.'
+          : 'POS categories list contained inactive category.',
+      });
+    } catch (e: any) {
+      results.push({
+        code: 'TEST-08-POS-ERR',
+        name: 'POS: Catalog Filtering Error',
+        category: 'POS_SALES',
+        passed: false,
+        message: e.message,
+      });
+    }
+
     // --- RECOVERY TESTS ---
     // Test W: Export works
     try {

@@ -29,6 +29,7 @@ import { ReceiptModal } from '../components/pos/ReceiptModal';
 import { Modal } from '../components/common/Modal';
 import { CustomerService } from '../services/customerService';
 import { LoyaltyService } from '../services/loyaltyService';
+import { SalesService } from '../services/salesService';
 
 export const PosPage: React.FC = () => {
   const {
@@ -62,21 +63,19 @@ export const PosPage: React.FC = () => {
   const [showRecentSalesModal, setShowRecentSalesModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const categories = useMemo(() => {
-    const cats = Array.from(new Set(products.map((p) => p.category)));
-    return ['ALL', ...cats];
+  // POS Core Rule: Catalog must only display active products (Product.active === true)
+  const activeProducts = useMemo(() => {
+    return products.filter((p) => p.active);
   }, [products]);
 
-  // Catalog filtering
+  // Categories derived exclusively from active products
+  const categories = useMemo(() => {
+    return SalesService.getPosCategories(products);
+  }, [products]);
+
+  // Catalog filtering: Active products only, filtered by category and search (name / SKU)
   const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      const matchesCategory =
-        selectedCategory === 'ALL' || p.category === selectedCategory;
-      const matchesSearch =
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.sku.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCategory && matchesSearch;
-    });
+    return SalesService.filterPosCatalog(products, selectedCategory, searchQuery);
   }, [products, selectedCategory, searchQuery]);
 
   // Synchronize cart with latest live product data
@@ -423,6 +422,23 @@ export const PosPage: React.FC = () => {
                 placeholder="Scan barcode or search by product name / SKU..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const trimmed = searchQuery.trim().toLowerCase();
+                    if (!trimmed) return;
+                    const exactMatch = filteredProducts.find(
+                      (p) => p.sku.toLowerCase() === trimmed || p.name.toLowerCase() === trimmed
+                    );
+                    if (exactMatch && exactMatch.currentStock > 0) {
+                      addToCart(exactMatch);
+                      setSearchQuery('');
+                    } else if (filteredProducts.length === 1 && filteredProducts[0].currentStock > 0) {
+                      addToCart(filteredProducts[0]);
+                      setSearchQuery('');
+                    }
+                  }
+                }}
                 className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-stone-200 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
               />
               {searchQuery && (
@@ -469,12 +485,10 @@ export const PosPage: React.FC = () => {
                   key={product.id}
                   id={`product-card-${product.id}`}
                   onClick={() => {
-                    if (inStock && product.active) addToCart(product);
+                    if (inStock) addToCart(product);
                   }}
                   className={`bg-white rounded-xl border p-3 flex flex-col justify-between transition text-left select-none relative ${
-                    !product.active
-                      ? 'opacity-50 border-stone-200 cursor-not-allowed bg-stone-50'
-                      : !inStock
+                    !inStock
                       ? 'opacity-60 border-stone-200 cursor-not-allowed bg-stone-50'
                       : 'border-stone-200 hover:border-emerald-500 hover:shadow-xs cursor-pointer active:scale-98'
                   }`}
@@ -519,11 +533,7 @@ export const PosPage: React.FC = () => {
                     </div>
 
                     <div className="text-right">
-                      {!product.active ? (
-                        <span className="text-[10px] text-stone-400 font-semibold bg-stone-100 px-1.5 py-0.5 rounded">
-                          Inactive
-                        </span>
-                      ) : !inStock ? (
+                      {!inStock ? (
                         <span className="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
                           Out of Stock
                         </span>
@@ -545,13 +555,21 @@ export const PosPage: React.FC = () => {
             })}
           </div>
 
-          {filteredProducts.length === 0 && (
-            <div className="p-12 text-center bg-white rounded-xl border border-stone-200 text-stone-400 text-xs">
+          {activeProducts.length === 0 ? (
+            <div id="pos-empty-active-state" className="p-12 text-center bg-white rounded-xl border border-stone-200 text-stone-400 text-xs">
+              <ShoppingBag className="w-8 h-8 mx-auto mb-2 text-stone-300" />
+              <p className="font-semibold text-stone-700 text-sm">No active products available for sale.</p>
+              <p className="text-[11px] text-stone-400 mt-1">
+                Activate products in the Products catalog to enable them for POS sales.
+              </p>
+            </div>
+          ) : filteredProducts.length === 0 ? (
+            <div id="pos-no-match-state" className="p-12 text-center bg-white rounded-xl border border-stone-200 text-stone-400 text-xs">
               <Search className="w-8 h-8 mx-auto mb-2 text-stone-300" />
               <p className="font-semibold text-stone-600">No matching products found</p>
               <p className="text-[11px] text-stone-400 mt-1">Try modifying your search or selecting a different category.</p>
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Right Column: Active Order Ticket & Checkout (5 cols) */}

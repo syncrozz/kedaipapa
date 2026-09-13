@@ -372,4 +372,44 @@ export class SalesService {
       total,
     };
   }
+
+  /**
+   * Filters product catalog for POS point-of-sale display.
+   * Core Rule: Only active products (product.active === true) are eligible for POS display and search.
+   * Inactive products are completely excluded regardless of stock status.
+   */
+  public static filterPosCatalog(
+    products: Product[],
+    selectedCategory: string = 'ALL',
+    searchQuery: string = ''
+  ): Product[] {
+    const query = searchQuery.trim().toLowerCase();
+    return products.filter((p) => {
+      // 1. Mandatory Core Rule: Active products only (hide inactive from POS completely)
+      if (!p.active) return false;
+
+      // 2. Category filter
+      const matchesCategory =
+        selectedCategory === 'ALL' || p.category === selectedCategory;
+      if (!matchesCategory) return false;
+
+      // 3. Search filter: product name or SKU
+      if (query) {
+        const matchesName = p.name.toLowerCase().includes(query);
+        const matchesSku = p.sku.toLowerCase().includes(query);
+        if (!matchesName && !matchesSku) return false;
+      }
+
+      return true;
+    });
+  }
+
+  /**
+   * Retrieves unique categories from active products only for POS category filtering.
+   */
+  public static getPosCategories(products: Product[]): string[] {
+    const activeProducts = products.filter((p) => p.active);
+    const cats = Array.from(new Set(activeProducts.map((p) => p.category)));
+    return ['ALL', ...cats];
+  }
 }
