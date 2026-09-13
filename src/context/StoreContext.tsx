@@ -17,6 +17,8 @@ import {
   LoyaltyLedgerEntry,
   StaffUser,
   StoreBackupPayload,
+  CommitUpsertPayload,
+  UpsertImportCommitResult,
 } from '../types';
 import {
   INITIAL_STORE,
@@ -36,6 +38,7 @@ import { PurchasingService, CreatePurchaseInput, CompletePurchaseResult } from '
 import { CustomerService, CreateCustomerInput, UpdateCustomerInput } from '../services/customerService';
 import { LoyaltyService } from '../services/loyaltyService';
 import { StaffService, CreateStaffInput, UpdateStaffInput } from '../services/staffService';
+import { SmartInputService } from '../services/smartInputService';
 import {
   StorageService,
   STORAGE_KEYS,
@@ -68,6 +71,7 @@ interface StoreContextType {
   // Core Domain Operations
   addProduct: (newProduct: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>) => Product;
   importProducts: (newProducts: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>[]) => number;
+  commitProductsUpsertImport: (payload: CommitUpsertPayload) => UpsertImportCommitResult;
   updateProduct: (id: string, updates: Partial<Product>) => Product;
   toggleProductActive: (id: string) => void;
   deleteProduct: (id: string) => { success: boolean; message: string };
@@ -399,14 +403,70 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   /**
-   * Bulk import validated products from CSV (SES 4.4 Locked Part D).
-   * Automatically initializes opening inventory movements for stock > 0.
+   * Safe atomic upsert import for products (SES 4.4 Locked & Safe Upsert Mode).
+   * - Inserts new products and registers opening STOCK_IN movements.
+   * - Updates existing product catalog fields (name, category, costPrice, sellingPrice, minStock, active).
+   * - CRITICAL: Never modifies currentStock or inventory movements of existing products.
+   * - Atomic: Validates everything before applying; either all changes commit or none do.
    */
-  const importProducts = (
-    newItems: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>[]
-  ): number => {
-    if (!newItems || newItems.length === 0) return 0;
+  const commitProductsUpsertImport = (
+    payload: CommitUpsertPayload
+  ): UpsertImportCommitResult => {
+    const { newItems, updateItems, skippedCount = 0, invalidCount = 0 } = payload;
     const now = new Date().toISOString();
+
+    // 1. Validation phase (Atomic guarantee)
+    // Check updateItems: all existingProductId must exist
+    for (const u of updateItems) {
+      const found = products.find((p) => p.id === u.existingProductId);
+      if (!found) {
+        throw new Error(`Atomic Import Aborted: Produk sedia ada dengan ID "${u.existingProductId}" tidak dijumpai.`);
+      }
+    }
+
+    // Check newItems: no SKU collision with existing products (unless part of update)
+    const existingSkuMap = new Map(products.map((p) => [SmartInputService.normalizeCode(p.sku), p.id]));
+    const newSkuSet = new Set<string>();
+
+    for (const n of newItems) {
+      const normalizedSku = SmartInputService.normalizeCode(n.sku);
+      if (!normalizedSku) {
+        throw new Error('Atomic Import Aborted: Terdapat item baru dengan SKU kosong.');
+      }
+      if (newSkuSet.has(normalizedSku)) {
+        throw new Error(`Atomic Import Aborted: Terdapat duplikasi SKU "${normalizedSku}" dalam kumpulan item baru.`);
+      }
+      newSkuSet.add(normalizedSku);
+
+      if (existingSkuMap.has(normalizedSku)) {
+        throw new Error(`Atomic Import Aborted: SKU "${normalizedSku}" sudah wujud dalam katalog.`);
+      }
+    }
+
+    // 2. Prepare mutations
+    const updateMap = new Map<string, (typeof updateItems)[0]>();
+    updateItems.forEach((u) => updateMap.set(u.existingProductId, u));
+
+    const nextProducts: Product[] = products.map((prod) => {
+      const updateData = updateMap.get(prod.id);
+      if (updateData) {
+        return {
+          ...prod,
+          name: updateData.name,
+          category: updateData.category,
+          costPrice: updateData.costPrice,
+          sellingPrice: updateData.sellingPrice,
+          minimumStock: updateData.minimumStock,
+          active: updateData.active,
+          updatedAt: now,
+          // Note: currentStock is strictly preserved from prod.currentStock!
+          // Note: id is strictly preserved from prod.id!
+          // Note: sku is strictly preserved from prod.sku!
+        };
+      }
+      return prod;
+    });
+
     const addedProducts: Product[] = [];
     const openingMovements: InventoryMovement[] = [];
 
@@ -438,15 +498,37 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     });
 
-    const updatedProducts = [...products, ...addedProducts];
-    const updatedMovements = [...openingMovements, ...movements];
+    const finalProducts = [...nextProducts, ...addedProducts];
+    const finalMovements = [...openingMovements, ...movements];
 
-    setProducts(updatedProducts);
-    setMovements(updatedMovements);
-    StorageService.safeSet(STORAGE_KEYS.PRODUCTS, updatedProducts);
-    StorageService.safeSet(STORAGE_KEYS.MOVEMENTS, updatedMovements);
+    // 3. Commit state & storage atomically
+    setProducts(finalProducts);
+    setMovements(finalMovements);
+    StorageService.safeSet(STORAGE_KEYS.PRODUCTS, finalProducts);
+    StorageService.safeSet(STORAGE_KEYS.MOVEMENTS, finalMovements);
 
-    return addedProducts.length;
+    return {
+      newCount: addedProducts.length,
+      updatedCount: updateItems.length,
+      skippedCount,
+      invalidCount,
+    };
+  };
+
+  /**
+   * Bulk import validated products from CSV (SES 4.4 Locked Part D).
+   * Automatically initializes opening inventory movements for stock > 0.
+   */
+  const importProducts = (
+    newItems: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>[]
+  ): number => {
+    if (!newItems || newItems.length === 0) return 0;
+    const res = commitProductsUpsertImport({
+      mode: 'SKIP_EXISTING',
+      newItems,
+      updateItems: [],
+    });
+    return res.newCount;
   };
 
   /**
@@ -993,6 +1075,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         requireAdmin,
         addProduct,
         importProducts,
+        commitProductsUpsertImport,
         updateProduct,
         toggleProductActive,
         deleteProduct,

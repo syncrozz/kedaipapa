@@ -13,6 +13,7 @@ import {
   DollarSign,
   Truck,
   ClipboardCheck,
+  UploadCloud,
 } from 'lucide-react';
 import { VerificationRunner, VerificationTestResult } from '../../services/verificationRunner';
 import { Part02VerificationRunner, Part02TestResult } from '../../services/part02VerificationRunner';
@@ -22,12 +23,16 @@ import { Part05VerificationRunner, Part05TestResult } from '../../services/part0
 import { Part06VerificationRunner, Part06TestResult } from '../../services/part06VerificationRunner';
 import { Part07VerificationRunner, Part07TestResult } from '../../services/part07VerificationRunner';
 import { Part08VerificationRunner, Part08TestResult } from '../../services/part08VerificationRunner';
+import { CsvImportVerificationRunner, CsvImportTestResult } from '../../services/csvImportVerificationRunner';
 
 export const VerificationAuditSuite: React.FC = () => {
   const [activeSuiteTab, setActiveSuiteTab] = useState<
-    'ALL' | 'PART_08' | 'PART_07' | 'PART_06' | 'PART_05' | 'PART_04' | 'PART_03' | 'PART_02' | 'PART_01'
-  >('PART_08');
+    'ALL' | 'CSV_IMPORT' | 'PART_08' | 'PART_07' | 'PART_06' | 'PART_05' | 'PART_04' | 'PART_03' | 'PART_02' | 'PART_01'
+  >('CSV_IMPORT');
 
+  const [csvImportTests, setCsvImportTests] = useState<CsvImportTestResult[]>(() =>
+    CsvImportVerificationRunner.runAllTests()
+  );
   const [part08Tests, setPart08Tests] = useState<Part08TestResult[]>(() =>
     Part08VerificationRunner.runAllTests()
   );
@@ -57,6 +62,7 @@ export const VerificationAuditSuite: React.FC = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Overall counts
+  const csvImportPassed = csvImportTests.filter((t) => t.passed).length;
   const part08Passed = part08Tests.filter((t) => t.passed).length;
   const part07Passed = part07Tests.filter((t) => t.status === 'PASSED').length;
   const foundationPassed = foundationTests.filter((t) => t.status === 'PASSED').length;
@@ -67,6 +73,7 @@ export const VerificationAuditSuite: React.FC = () => {
   const part06Passed = part06Tests.filter((t) => t.status === 'PASSED').length;
 
   const totalTestsCount =
+    csvImportTests.length +
     part08Tests.length +
     part07Tests.length +
     foundationTests.length +
@@ -77,6 +84,7 @@ export const VerificationAuditSuite: React.FC = () => {
     part06Tests.length;
 
   const totalPassedCount =
+    csvImportPassed +
     part08Passed +
     part07Passed +
     foundationPassed +
@@ -91,6 +99,7 @@ export const VerificationAuditSuite: React.FC = () => {
   const handleRerun = () => {
     setIsRunning(true);
     setTimeout(() => {
+      setCsvImportTests(CsvImportVerificationRunner.runAllTests());
       setPart08Tests(Part08VerificationRunner.runAllTests());
       setPart07Tests(Part07VerificationRunner.runAllTests());
       setFoundationTests(VerificationRunner.runAllTests());
@@ -213,6 +222,19 @@ export const VerificationAuditSuite: React.FC = () => {
 
         <button
           type="button"
+          onClick={() => setActiveSuiteTab('CSV_IMPORT')}
+          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+            activeSuiteTab === 'CSV_IMPORT'
+              ? 'bg-stone-900 text-white shadow-2xs'
+              : 'bg-white text-stone-700 hover:bg-stone-50 border border-stone-200'
+          }`}
+        >
+          <UploadCloud className="w-3.5 h-3.5 text-emerald-600" />
+          <span>CSV Importer Safe Upsert ({csvImportPassed}/{csvImportTests.length})</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveSuiteTab('PART_08')}
           className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
             activeSuiteTab === 'PART_08'
@@ -318,6 +340,81 @@ export const VerificationAuditSuite: React.FC = () => {
 
       {/* Test List Container */}
       <div className="divide-y divide-stone-200">
+        {/* CSV IMPORTER SAFE UPSERT TESTS */}
+        {(activeSuiteTab === 'ALL' || activeSuiteTab === 'CSV_IMPORT') && (
+          <div>
+            <div className="bg-stone-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-stone-700 border-b border-stone-200 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <UploadCloud className="w-3.5 h-3.5 text-emerald-700" />
+                <span>CSV Importer Safe Upsert Suite (TEST A &ndash; K)</span>
+              </span>
+              <span className="text-emerald-700 font-mono font-semibold">
+                {csvImportPassed} / {csvImportTests.length} Passed
+              </span>
+            </div>
+
+            <div className="divide-y divide-stone-100">
+              {csvImportTests.map((t) => {
+                const isExpanded = expandedId === `csv-${t.code}`;
+                return (
+                  <div key={t.code} className="p-3.5 hover:bg-stone-50/70 transition">
+                    <div
+                      className="flex items-start justify-between gap-3 cursor-pointer select-none"
+                      onClick={() => setExpandedId(isExpanded ? null : `csv-${t.code}`)}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <span
+                          className={`inline-flex items-center justify-center font-mono font-bold text-[11px] px-2 py-0.5 rounded border shrink-0 mt-0.5 ${
+                            t.passed
+                              ? 'bg-emerald-100 text-emerald-900 border-emerald-200'
+                              : 'bg-rose-100 text-rose-900 border-rose-200'
+                          }`}
+                        >
+                          {t.code}
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-stone-900">{t.name}</span>
+                            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-stone-100 text-stone-600 border border-stone-200">
+                              {t.category}
+                            </span>
+                          </div>
+                          <p className="text-xs text-stone-600 mt-0.5">{t.message}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                            t.passed
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-rose-100 text-rose-800'
+                          }`}
+                        >
+                          {t.status}
+                        </span>
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-stone-400" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-stone-400" />
+                        )}
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="mt-3 pt-3 border-t border-stone-100 text-xs text-stone-600 space-y-1.5 pl-9">
+                        <div className="text-[11px] text-stone-500">
+                          <strong className="text-stone-700">Verification Details:</strong> {t.details}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* PART 08 HARDENING MASTER TESTS */}
         {(activeSuiteTab === 'ALL' || activeSuiteTab === 'PART_08') && (
           <div>

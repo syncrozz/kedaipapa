@@ -240,3 +240,33 @@ export interface StoreBackupPayload {
   staffUsers: StaffUser[];
 }
 
+export type CsvImportMode = 'SKIP_EXISTING' | 'UPDATE_EXISTING';
+
+export interface ProductCatalogUpdatePayload {
+  existingProductId: string;
+  sku: string;
+  name: string;
+  category: string;
+  costPrice: number;
+  sellingPrice: number;
+  minimumStock: number;
+  active: boolean;
+  ignoredCsvStock?: number;
+}
+
+export interface CommitUpsertPayload {
+  mode: CsvImportMode;
+  newItems: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>[];
+  updateItems: ProductCatalogUpdatePayload[];
+  skippedCount?: number;
+  invalidCount?: number;
+}
+
+export interface UpsertImportCommitResult {
+  newCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  invalidCount: number;
+}
+
+

@@ -10,7 +10,15 @@
  * - Controlled import validation with pre-commit review summary
  */
 
-import { Product, Supplier, StaffUser, Customer, LoyaltyLedgerEntry } from '../types';
+import {
+  Product,
+  Supplier,
+  StaffUser,
+  Customer,
+  LoyaltyLedgerEntry,
+  CsvImportMode,
+  ProductCatalogUpdatePayload,
+} from '../types';
 import { SmartInputService } from './smartInputService';
 
 export interface CsvImportValidationResult<T> {
@@ -21,6 +29,42 @@ export interface CsvImportValidationResult<T> {
   validItems: T[];
   duplicates: { rowNumber: number; reason: string; item: T }[];
   errors: { rowNumber: number; reason: string; rawRow: Record<string, string> }[];
+}
+
+export type { CsvImportMode };
+export type CsvRowAction = 'NEW' | 'UPDATE' | 'SKIP' | 'INVALID';
+
+export interface CsvProductImportRow {
+  rowNumber: number;
+  action: CsvRowAction;
+  sku: string;
+  name: string;
+  category: string;
+  costPrice: number;
+  sellingPrice: number;
+  csvStock: number;
+  minimumStock: number;
+  active: boolean;
+  reason: string;
+  stockNote: string;
+  existingProductId?: string;
+  rawRow: Record<string, string>;
+}
+
+export type CsvProductUpdateItem = ProductCatalogUpdatePayload;
+
+export interface CsvProductsUpsertValidationResult
+  extends CsvImportValidationResult<Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>> {
+  totalRows: number;
+  newCount: number;
+  updateCount: number;
+  skipCount: number;
+  invalidCount: number;
+  existingCount: number;
+  mode: CsvImportMode;
+  rows: CsvProductImportRow[];
+  newItems: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>[];
+  updateItems: CsvProductUpdateItem[];
 }
 
 export class CsvService {
@@ -236,18 +280,28 @@ export class CsvService {
   }
 
   /**
-   * Validates and normalizes products from imported CSV before commit.
+   * Validates products from imported CSV with explicit Upsert & Safe Mode support.
+   * Classifies rows into NEW, UPDATE, SKIP, and INVALID with clear reasoning.
    */
-  public static validateProductsImport(
+  public static validateProductsUpsert(
     csvRows: Record<string, string>[],
-    existingProducts: Product[]
-  ): CsvImportValidationResult<Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>> {
-    const existingSkus = new Set(existingProducts.map((p) => p.sku.trim().toUpperCase()));
+    existingProducts: Product[],
+    mode: CsvImportMode = 'SKIP_EXISTING'
+  ): CsvProductsUpsertValidationResult {
+    const existingSkuMap = new Map<string, Product>();
+    existingProducts.forEach((p) => {
+      existingSkuMap.set(SmartInputService.normalizeCode(p.sku), p);
+    });
+
     const seenBatchSkus = new Set<string>();
 
-    const validItems: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>[] = [];
+    const rows: CsvProductImportRow[] = [];
+    const newItems: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>[] = [];
+    const updateItems: CsvProductUpdateItem[] = [];
     const duplicates: { rowNumber: number; reason: string; item: any }[] = [];
     const errors: { rowNumber: number; reason: string; rawRow: Record<string, string> }[] = [];
+
+    let existingCount = 0;
 
     csvRows.forEach((row, index) => {
       const rowNumber = index + 2; // Account for 1-based index and header line
@@ -260,73 +314,231 @@ export class CsvService {
 
       const rawSku = findVal(/sku/i);
       const rawName = findVal(/name|nama/i);
-      const rawCategory = findVal(/category|kategori/i) || 'Snacks & Biscuits';
+      const rawCategory = findVal(/category|kategori/i);
       const rawCost = findVal(/cost|kos/i);
       const rawPrice = findVal(/price|harga|selling/i);
       const rawStock = findVal(/stock|stok|current/i);
       const rawMinStock = findVal(/min|minimum/i);
+      const rawStatus = findVal(/status|active|aktif/i);
 
       const sku = SmartInputService.normalizeCode(rawSku);
       const name = SmartInputService.normalizeName(rawName);
 
       if (!sku) {
-        errors.push({ rowNumber, reason: 'SKU tidak boleh kosong.', rawRow: row });
+        const reason = 'SKU tidak boleh kosong.';
+        errors.push({ rowNumber, reason, rawRow: row });
+        rows.push({
+          rowNumber,
+          action: 'INVALID',
+          sku: rawSku || '-',
+          name: rawName || '-',
+          category: rawCategory || '-',
+          costPrice: 0,
+          sellingPrice: 0,
+          csvStock: 0,
+          minimumStock: 0,
+          active: false,
+          reason,
+          stockNote: 'Baris tidak sah - dibatalkan.',
+          rawRow: row,
+        });
         return;
       }
+
       if (!name) {
-        errors.push({ rowNumber, reason: 'Nama produk tidak boleh kosong.', rawRow: row });
-        return;
-      }
-
-      if (existingSkus.has(sku)) {
-        duplicates.push({
+        const reason = 'Nama produk tidak boleh kosong.';
+        errors.push({ rowNumber, reason, rawRow: row });
+        rows.push({
           rowNumber,
-          reason: `SKU '${sku}' sudah wujud dalam katalog sedia ada.`,
-          item: { sku, name },
+          action: 'INVALID',
+          sku,
+          name: rawName || '-',
+          category: rawCategory || '-',
+          costPrice: 0,
+          sellingPrice: 0,
+          csvStock: 0,
+          minimumStock: 0,
+          active: false,
+          reason,
+          stockNote: 'Baris tidak sah - dibatalkan.',
+          rawRow: row,
         });
         return;
       }
 
+      // Check duplicate within the same batch
       if (seenBatchSkus.has(sku)) {
-        duplicates.push({
+        const reason = `SKU '${sku}' berulang dalam fail CSV ini.`;
+        errors.push({ rowNumber, reason, rawRow: row });
+        duplicates.push({ rowNumber, reason, item: { sku, name } });
+        rows.push({
           rowNumber,
-          reason: `SKU '${sku}' berulang dalam fail CSV ini.`,
-          item: { sku, name },
+          action: 'INVALID',
+          sku,
+          name,
+          category: rawCategory || 'General',
+          costPrice: SmartInputService.parseNumeric(rawCost, 0),
+          sellingPrice: SmartInputService.parseNumeric(rawPrice, 0),
+          csvStock: Math.max(0, Math.floor(SmartInputService.parseNumeric(rawStock, 0))),
+          minimumStock: Math.max(0, Math.floor(SmartInputService.parseNumeric(rawMinStock, 5))),
+          active: true,
+          reason,
+          stockNote: 'Baris pendua dalam fail - dibatalkan.',
+          rawRow: row,
         });
         return;
-      }
-
-      const costPrice = SmartInputService.parseNumeric(rawCost, 0);
-      const sellingPrice = SmartInputService.parseNumeric(rawPrice, 0);
-      const currentStock = Math.max(0, Math.floor(SmartInputService.parseNumeric(rawStock, 0)));
-      const minimumStock = Math.max(0, Math.floor(SmartInputService.parseNumeric(rawMinStock, 5)));
-
-      if (sellingPrice < costPrice) {
-        // Warning or allowed? Allowed in retail, but sellingPrice should be > 0
       }
 
       seenBatchSkus.add(sku);
 
-      validItems.push({
-        sku,
-        name,
-        category: rawCategory.trim() || 'General',
-        costPrice: SmartInputService.roundToTwoDecimals(costPrice),
-        sellingPrice: SmartInputService.roundToTwoDecimals(sellingPrice),
-        currentStock,
-        minimumStock,
-        active: true,
-      });
+      const existingProd = existingSkuMap.get(sku);
+      const parsedStock = Math.max(0, Math.floor(SmartInputService.parseNumeric(rawStock, 0)));
+
+      // Parse status if present
+      let isActive = true;
+      if (rawStatus) {
+        isActive = !/inactive|tidak|false|0/i.test(rawStatus);
+      } else if (existingProd) {
+        isActive = existingProd.active;
+      }
+
+      if (existingProd) {
+        existingCount++;
+
+        const costPrice = rawCost !== ''
+          ? SmartInputService.roundToTwoDecimals(SmartInputService.parseNumeric(rawCost, existingProd.costPrice))
+          : existingProd.costPrice;
+        const sellingPrice = rawPrice !== ''
+          ? SmartInputService.roundToTwoDecimals(SmartInputService.parseNumeric(rawPrice, existingProd.sellingPrice))
+          : existingProd.sellingPrice;
+        const category = rawCategory ? rawCategory.trim() : existingProd.category;
+        const minimumStock = rawMinStock !== ''
+          ? Math.max(0, Math.floor(SmartInputService.parseNumeric(rawMinStock, existingProd.minimumStock)))
+          : existingProd.minimumStock;
+
+        if (mode === 'SKIP_EXISTING') {
+          const reason = `SKU '${sku}' sudah wujud dalam katalog (mod Langkau Sedia Ada).`;
+          duplicates.push({ rowNumber, reason, item: { sku, name } });
+          rows.push({
+            rowNumber,
+            action: 'SKIP',
+            sku,
+            name,
+            category,
+            costPrice,
+            sellingPrice,
+            csvStock: parsedStock,
+            minimumStock,
+            active: isActive,
+            reason,
+            stockNote: 'Stock column ignored for existing products.',
+            existingProductId: existingProd.id,
+            rawRow: row,
+          });
+        } else {
+          // UPDATE_EXISTING
+          const reason = `SKU '${sku}' sepadan dengan produk sedia ada (${existingProd.name}). Katalog akan dikemas kini.`;
+          const updateItem: CsvProductUpdateItem = {
+            existingProductId: existingProd.id,
+            sku: existingProd.sku,
+            name,
+            category: category || 'General',
+            costPrice,
+            sellingPrice,
+            minimumStock,
+            active: isActive,
+            ignoredCsvStock: parsedStock,
+          };
+          updateItems.push(updateItem);
+          rows.push({
+            rowNumber,
+            action: 'UPDATE',
+            sku,
+            name,
+            category,
+            costPrice,
+            sellingPrice,
+            csvStock: parsedStock,
+            minimumStock,
+            active: isActive,
+            reason,
+            stockNote: 'Stock column ignored for existing products.',
+            existingProductId: existingProd.id,
+            rawRow: row,
+          });
+        }
+      } else {
+        // Genuinely NEW product
+        const costPrice = SmartInputService.roundToTwoDecimals(SmartInputService.parseNumeric(rawCost, 0));
+        const sellingPrice = SmartInputService.roundToTwoDecimals(SmartInputService.parseNumeric(rawPrice, 0));
+        const category = (rawCategory || 'Snacks & Biscuits').trim();
+        const minimumStock = Math.max(0, Math.floor(SmartInputService.parseNumeric(rawMinStock, 5)));
+
+        const newItem: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'> = {
+          sku,
+          name,
+          category,
+          costPrice,
+          sellingPrice,
+          currentStock: parsedStock,
+          minimumStock,
+          active: isActive,
+        };
+
+        newItems.push(newItem);
+        rows.push({
+          rowNumber,
+          action: 'NEW',
+          sku,
+          name,
+          category,
+          costPrice,
+          sellingPrice,
+          csvStock: parsedStock,
+          minimumStock,
+          active: isActive,
+          reason: 'Produk baru - akan didaftarkan ke katalog.',
+          stockNote:
+            parsedStock > 0
+              ? `Pembukaan stok: ${parsedStock} unit (STOCK_IN direkodkan)`
+              : 'Tiada pembukaan stok (0 unit)',
+          rawRow: row,
+        });
+      }
     });
+
+    const newCount = rows.filter((r) => r.action === 'NEW').length;
+    const updateCount = rows.filter((r) => r.action === 'UPDATE').length;
+    const skipCount = rows.filter((r) => r.action === 'SKIP').length;
+    const invalidCount = rows.filter((r) => r.action === 'INVALID').length;
 
     return {
       totalRows: csvRows.length,
-      validCount: validItems.length,
-      duplicateCount: duplicates.length,
-      invalidCount: errors.length,
-      validItems,
+      validCount: newCount,
+      duplicateCount: skipCount,
+      invalidCount,
+      validItems: newItems,
       duplicates,
       errors,
+      newCount,
+      updateCount,
+      skipCount,
+      existingCount,
+      mode,
+      rows,
+      newItems,
+      updateItems,
     };
+  }
+
+  /**
+   * Validates and normalizes products from imported CSV before commit.
+   * Preserves backward compatibility by invoking validateProductsUpsert with SKIP_EXISTING.
+   */
+  public static validateProductsImport(
+    csvRows: Record<string, string>[],
+    existingProducts: Product[]
+  ): CsvImportValidationResult<Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'>> {
+    return this.validateProductsUpsert(csvRows, existingProducts, 'SKIP_EXISTING');
   }
 }

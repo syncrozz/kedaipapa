@@ -26,7 +26,7 @@ import {
   SearchCheck,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
-import { Product, StockStatus } from '../types';
+import { Product, StockStatus, CommitUpsertPayload, UpsertImportCommitResult } from '../types';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { EmptyState } from '../components/common/EmptyState';
@@ -46,6 +46,7 @@ export const ProductsPage: React.FC = () => {
     purchases,
     addProduct,
     importProducts,
+    commitProductsUpsertImport,
     updateProduct,
     toggleProductActive,
     deleteProduct,
@@ -197,6 +198,20 @@ export const ProductsPage: React.FC = () => {
       message: `Berjaya mengimport ${count} produk ke dalam katalog ${store.name}.`,
     });
     setTimeout(() => setNotification(null), 5000);
+  };
+
+  const handleCommitCsvUpsert = (payload: CommitUpsertPayload): UpsertImportCommitResult => {
+    const result = commitProductsUpsertImport(payload);
+    let msg = `Import selesai: ${result.newCount} baru ditambah, ${result.updatedCount} dikemas kini.`;
+    if (result.skippedCount > 0) {
+      msg += ` (${result.skippedCount} dilangkau)`;
+    }
+    setNotification({
+      type: 'success',
+      message: msg,
+    });
+    setTimeout(() => setNotification(null), 5000);
+    return result;
   };
 
   const handleAddSubmit = (e: React.FormEvent) => {
@@ -1281,6 +1296,7 @@ export const ProductsPage: React.FC = () => {
         isOpen={isCsvImportOpen}
         onClose={() => setIsCsvImportOpen(false)}
         onCommit={handleCommitCsvImport}
+        onCommitUpsertImport={handleCommitCsvUpsert}
         existingProducts={products}
       />
 
