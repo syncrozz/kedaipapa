@@ -41,9 +41,9 @@ export const Product360Modal: React.FC<Product360ModalProps> = ({
   onClose,
   onAdjustStock,
 }) => {
-  if (!product) return null;
-
   const [activeTab, setActiveTab] = useState<'overview' | 'ledger' | 'purchases' | 'sales' | 'reconciliation'>('overview');
+
+  if (!product) return null;
 
   const data: Product360ViewData = InventoryControlService.getProduct360View(
     product,

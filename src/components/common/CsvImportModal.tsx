@@ -55,7 +55,12 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
     return CsvService.validateProductsUpsert(parsedRows, existingProducts, importMode);
   }, [parsedRows, existingProducts, importMode]);
 
-  if (!isOpen) return null;
+  // Filtered rows for the preview table
+  const filteredRows = useMemo(() => {
+    if (!validationResult) return [];
+    if (activeFilter === 'ALL') return validationResult.rows;
+    return validationResult.rows.filter((r) => r.action === activeFilter);
+  }, [validationResult, activeFilter]);
 
   const handleReset = () => {
     setFileName(null);
@@ -144,13 +149,6 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
     }
   };
 
-  // Filtered rows for the preview table
-  const filteredRows = useMemo(() => {
-    if (!validationResult) return [];
-    if (activeFilter === 'ALL') return validationResult.rows;
-    return validationResult.rows.filter((r) => r.action === activeFilter);
-  }, [validationResult, activeFilter]);
-
   // Primary commit button text calculation (SES Requirement 10)
   const getCommitButtonLabel = () => {
     if (!validationResult) return 'Komit Import';
@@ -188,6 +186,8 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
       return validationResult.newCount === 0;
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div
