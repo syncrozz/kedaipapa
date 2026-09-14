@@ -411,109 +411,9 @@ export const PosPage: React.FC = () => {
       {/* Main Two-Column POS Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* Left Column: Product Selection Grid (7 cols) */}
-        <div className="lg:col-span-7 space-y-4">
-          {/* Product Catalog Cards Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {filteredProducts.map((product) => {
-              const inStock = product.currentStock > 0;
-              const cartItem = liveCart.find((i) => i.product.id === product.id);
-              const qtyInCart = cartItem ? cartItem.quantity : 0;
-              const isLowStock = product.currentStock <= product.minimumStock && inStock;
-              const unitProfit = Number((product.sellingPrice - product.costPrice).toFixed(2));
-
-              return (
-                <div
-                  key={product.id}
-                  id={`product-card-${product.id}`}
-                  onClick={() => {
-                    if (inStock) addToCart(product);
-                  }}
-                  className={`bg-white rounded-xl border p-3 flex flex-col justify-between transition text-left select-none relative ${
-                    !inStock
-                      ? 'opacity-60 border-stone-200 cursor-not-allowed bg-stone-50'
-                      : 'border-stone-200 hover:border-emerald-500 hover:shadow-xs cursor-pointer active:scale-98'
-                  }`}
-                >
-                  {/* Badge showing quantity in active ticket */}
-                  {qtyInCart > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center shadow-xs">
-                      {qtyInCart}
-                    </span>
-                  )}
-
-                  <div>
-                    {product.imageUrl && (
-                      <div className="w-full h-20 mb-2 rounded-lg overflow-hidden bg-stone-100 border border-stone-100">
-                        <img
-                          src={product.imageUrl}
-                          alt={product.name}
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between text-[10px] text-stone-400 mb-1">
-                      <span className="font-mono font-medium">{product.sku}</span>
-                      <span className="truncate max-w-[80px]">{product.category}</span>
-                    </div>
-
-                    <h4 className="text-xs font-semibold text-stone-900 line-clamp-2 leading-snug">
-                      {product.name}
-                    </h4>
-                  </div>
-
-                  <div className="mt-3 pt-2 border-t border-stone-100 flex items-end justify-between">
-                    <div>
-                      <div className="text-sm font-bold font-mono text-stone-900">
-                        {store.currency} {product.sellingPrice.toFixed(2)}
-                      </div>
-                      <div className="text-[10px] text-emerald-700 font-medium">
-                        +{store.currency} {unitProfit.toFixed(2)} profit
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      {!inStock ? (
-                        <span className="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
-                          Out of Stock
-                        </span>
-                      ) : (
-                        <span
-                          className={`text-[10px] font-mono font-medium px-1.5 py-0.5 rounded ${
-                            isLowStock
-                              ? 'bg-amber-50 text-amber-800 border border-amber-200 font-semibold'
-                              : 'text-stone-500 bg-stone-100'
-                          }`}
-                        >
-                          {product.currentStock} left
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {activeProducts.length === 0 ? (
-            <div id="pos-empty-active-state" className="p-12 text-center bg-white rounded-xl border border-stone-200 text-stone-400 text-xs">
-              <ShoppingBag className="w-8 h-8 mx-auto mb-2 text-stone-300" />
-              <p className="font-semibold text-stone-700 text-sm">No active products available for sale.</p>
-              <p className="text-[11px] text-stone-400 mt-1">
-                Activate products in the Products catalog to enable them for POS sales.
-              </p>
-            </div>
-          ) : filteredProducts.length === 0 ? (
-            <div id="pos-no-match-state" className="p-12 text-center bg-white rounded-xl border border-stone-200 text-stone-400 text-xs">
-              <Search className="w-8 h-8 mx-auto mb-2 text-stone-300" />
-              <p className="font-semibold text-stone-600">No matching products found</p>
-              <p className="text-[11px] text-stone-400 mt-1">Try modifying your search or selecting a different category.</p>
-            </div>
-          ) : null}
-
-          {/* Search bar & Category chips (Moved Below Search Results) */}
-          <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs space-y-3">
+        <div className="lg:col-span-7 flex flex-col gap-4">
+          {/* Search bar & Category chips */}
+          <div className="order-2 lg:order-1 bg-white p-4 rounded-xl border border-stone-200 shadow-xs space-y-3">
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
               <input
@@ -569,6 +469,108 @@ export const PosPage: React.FC = () => {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Product Catalog Cards Grid & Empty States Container */}
+          <div className="order-1 lg:order-2 space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {filteredProducts.map((product) => {
+                const inStock = product.currentStock > 0;
+                const cartItem = liveCart.find((i) => i.product.id === product.id);
+                const qtyInCart = cartItem ? cartItem.quantity : 0;
+                const isLowStock = product.currentStock <= product.minimumStock && inStock;
+                const unitProfit = Number((product.sellingPrice - product.costPrice).toFixed(2));
+
+                return (
+                  <div
+                    key={product.id}
+                    id={`product-card-${product.id}`}
+                    onClick={() => {
+                      if (inStock) addToCart(product);
+                    }}
+                    className={`bg-white rounded-xl border p-3 flex flex-col justify-between transition text-left select-none relative ${
+                      !inStock
+                        ? 'opacity-60 border-stone-200 cursor-not-allowed bg-stone-50'
+                        : 'border-stone-200 hover:border-emerald-500 hover:shadow-xs cursor-pointer active:scale-98'
+                    }`}
+                  >
+                    {/* Badge showing quantity in active ticket */}
+                    {qtyInCart > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center shadow-xs">
+                        {qtyInCart}
+                      </span>
+                    )}
+
+                    <div>
+                      {product.imageUrl && (
+                        <div className="w-full h-20 mb-2 rounded-lg overflow-hidden bg-stone-100 border border-stone-100">
+                          <img
+                            src={product.imageUrl}
+                            alt={product.name}
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between text-[10px] text-stone-400 mb-1">
+                        <span className="font-mono font-medium">{product.sku}</span>
+                        <span className="truncate max-w-[80px]">{product.category}</span>
+                      </div>
+
+                      <h4 className="text-xs font-semibold text-stone-900 line-clamp-2 leading-snug">
+                        {product.name}
+                      </h4>
+                    </div>
+
+                    <div className="mt-3 pt-2 border-t border-stone-100 flex items-end justify-between">
+                      <div>
+                        <div className="text-sm font-bold font-mono text-stone-900">
+                          {store.currency} {product.sellingPrice.toFixed(2)}
+                        </div>
+                        <div className="text-[10px] text-emerald-700 font-medium">
+                          +{store.currency} {unitProfit.toFixed(2)} profit
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        {!inStock ? (
+                          <span className="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                            Out of Stock
+                          </span>
+                        ) : (
+                          <span
+                            className={`text-[10px] font-mono font-medium px-1.5 py-0.5 rounded ${
+                              isLowStock
+                                ? 'bg-amber-50 text-amber-800 border border-amber-200 font-semibold'
+                                : 'text-stone-500 bg-stone-100'
+                            }`}
+                          >
+                            {product.currentStock} left
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {activeProducts.length === 0 ? (
+              <div id="pos-empty-active-state" className="p-12 text-center bg-white rounded-xl border border-stone-200 text-stone-400 text-xs">
+                <ShoppingBag className="w-8 h-8 mx-auto mb-2 text-stone-300" />
+                <p className="font-semibold text-stone-700 text-sm">No active products available for sale.</p>
+                <p className="text-[11px] text-stone-400 mt-1">
+                  Activate products in the Products catalog to enable them for POS sales.
+                </p>
+              </div>
+            ) : filteredProducts.length === 0 ? (
+              <div id="pos-no-match-state" className="p-12 text-center bg-white rounded-xl border border-stone-200 text-stone-400 text-xs">
+                <Search className="w-8 h-8 mx-auto mb-2 text-stone-300" />
+                <p className="font-semibold text-stone-600">No matching products found</p>
+                <p className="text-[11px] text-stone-400 mt-1">Try modifying your search or selecting a different category.</p>
+              </div>
+            ) : null}
           </div>
         </div>
 
