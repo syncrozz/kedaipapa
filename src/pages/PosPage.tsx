@@ -412,65 +412,6 @@ export const PosPage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* Left Column: Product Selection Grid (7 cols) */}
         <div className="lg:col-span-7 space-y-4">
-          {/* Search bar & Category chips */}
-          <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs space-y-3">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-              <input
-                id="pos-search-input"
-                type="text"
-                placeholder="Scan barcode or search by product name / SKU..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    const trimmed = searchQuery.trim().toLowerCase();
-                    if (!trimmed) return;
-                    const exactMatch = filteredProducts.find(
-                      (p) => p.sku.toLowerCase() === trimmed || p.name.toLowerCase() === trimmed
-                    );
-                    if (exactMatch && exactMatch.currentStock > 0) {
-                      addToCart(exactMatch);
-                      setSearchQuery('');
-                    } else if (filteredProducts.length === 1 && filteredProducts[0].currentStock > 0) {
-                      addToCart(filteredProducts[0]);
-                      setSearchQuery('');
-                    }
-                  }
-                }}
-                className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-stone-200 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-stone-400 hover:text-stone-600"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-
-            {/* Category Filter Chips */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-3 py-1.5 rounded-lg whitespace-nowrap font-medium transition ${
-                    selectedCategory === cat
-                      ? 'bg-stone-900 text-white shadow-2xs'
-                      : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Product Catalog Cards Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {filteredProducts.map((product) => {
@@ -570,6 +511,65 @@ export const PosPage: React.FC = () => {
               <p className="text-[11px] text-stone-400 mt-1">Try modifying your search or selecting a different category.</p>
             </div>
           ) : null}
+
+          {/* Search bar & Category chips (Moved Below Search Results) */}
+          <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs space-y-3">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+              <input
+                id="pos-search-input"
+                type="text"
+                placeholder="Scan barcode or search by product name / SKU..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const trimmed = searchQuery.trim().toLowerCase();
+                    if (!trimmed) return;
+                    const exactMatch = filteredProducts.find(
+                      (p) => p.sku.toLowerCase() === trimmed || p.name.toLowerCase() === trimmed
+                    );
+                    if (exactMatch && exactMatch.currentStock > 0) {
+                      addToCart(exactMatch);
+                      setSearchQuery('');
+                    } else if (filteredProducts.length === 1 && filteredProducts[0].currentStock > 0) {
+                      addToCart(filteredProducts[0]);
+                      setSearchQuery('');
+                    }
+                  }
+                }}
+                className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-stone-200 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-stone-400 hover:text-stone-600"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Category Filter Chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3 py-1.5 rounded-lg whitespace-nowrap font-medium transition ${
+                    selectedCategory === cat
+                      ? 'bg-stone-900 text-white shadow-2xs'
+                      : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Right Column: Active Order Ticket & Checkout (5 cols) */}

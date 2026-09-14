@@ -463,47 +463,47 @@ export const ProductsPage: React.FC = () => {
       )}
 
       {/* Architectural Concept Banner: Product Status vs Stock Status */}
-      <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 flex items-start gap-3 text-xs text-stone-600">
+      <div className="bg-stone-50 border border-stone-200 rounded-xl p-2.5 sm:p-3.5 flex items-start gap-2.5 sm:gap-3 text-xs text-stone-600">
         <Info className="w-4 h-4 text-stone-500 shrink-0 mt-0.5" />
-        <div className="space-y-1">
+        <div className="space-y-0.5 sm:space-y-1">
           <div>
             <strong className="text-stone-800">Section 8 & 9 — Architecture Decoupling:</strong>{' '}
             <span className="font-semibold text-emerald-800">Product Status</span> (Active / Inactive) determines whether an item is eligible for POS checkout.{' '}
             <span className="font-semibold text-stone-800">Stock Status</span> (Normal / Low Stock / Out of Stock) dynamically reflects on-hand inventory levels.
           </div>
-          <div className="text-[11px] text-stone-500">
+          <div className="hidden sm:block text-[11px] text-stone-500">
             Historical transaction snapshots remain immutable when current product prices are updated. Non-destructive deactivation protects audit trails.
           </div>
         </div>
       </div>
 
       {/* Search and Filters Bar */}
-      <div className="bg-white rounded-xl border border-stone-200 p-4 shadow-xs space-y-3">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="bg-white rounded-xl border border-stone-200 p-2.5 sm:p-4 shadow-2xs space-y-2 sm:space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-3">
           {/* Search by Product Name or SKU */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+          <div className="relative w-full md:flex-1 md:max-w-md">
+            <Search className="w-4 h-4 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-stone-400" />
             <input
               id="product-search-input"
               type="text"
               placeholder="Search by product name or SKU..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-stone-200 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+              className="w-full pl-8.5 sm:pl-9 pr-3 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg border border-stone-200 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-colors"
             />
           </div>
 
           {/* Filter Dropdowns */}
-          <div className="flex flex-wrap items-center gap-2 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap md:items-center gap-1.5 sm:gap-2 text-xs w-full md:w-auto">
             {/* Category Filter */}
-            <div className="flex items-center gap-1.5 bg-stone-50 px-2.5 py-1.5 rounded-lg border border-stone-200">
-              <Filter className="w-3.5 h-3.5 text-stone-400" />
-              <span className="text-stone-500 font-medium">Category:</span>
+            <div className="flex items-center gap-1.5 bg-stone-50 hover:bg-stone-100/80 px-2 sm:px-2.5 py-1.5 rounded-lg border border-stone-200 min-w-0 transition-colors">
+              <Filter className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+              <span className="text-stone-500 font-medium shrink-0">Category:</span>
               <select
                 id="product-category-filter"
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="bg-transparent font-semibold text-stone-800 focus:outline-hidden"
+                className="bg-transparent font-semibold text-stone-800 focus:outline-hidden w-full cursor-pointer truncate"
               >
                 {categories.map((c) => (
                   <option key={c} value={c}>
@@ -514,13 +514,15 @@ export const ProductsPage: React.FC = () => {
             </div>
 
             {/* Product Status Filter: ALL, ACTIVE, INACTIVE */}
-            <div className="flex items-center gap-1.5 bg-stone-50 px-2.5 py-1.5 rounded-lg border border-stone-200">
-              <span className="text-stone-500 font-medium">Product Status:</span>
+            <div className="flex items-center gap-1.5 bg-stone-50 hover:bg-stone-100/80 px-2 sm:px-2.5 py-1.5 rounded-lg border border-stone-200 min-w-0 transition-colors">
+              <span className="text-stone-500 font-medium shrink-0">
+                <span className="hidden sm:inline">Product </span>Status:
+              </span>
               <select
                 id="product-status-filter"
                 value={productStatusFilter}
                 onChange={(e) => setProductStatusFilter(e.target.value as any)}
-                className="bg-transparent font-semibold text-stone-800 focus:outline-hidden"
+                className="bg-transparent font-semibold text-stone-800 focus:outline-hidden w-full cursor-pointer truncate"
               >
                 <option value="ALL">All Statuses</option>
                 <option value="ACTIVE">Active Only</option>
@@ -529,13 +531,15 @@ export const ProductsPage: React.FC = () => {
             </div>
 
             {/* Stock Status Filter: ALL, NORMAL, LOW_STOCK, OUT_OF_STOCK */}
-            <div className="flex items-center gap-1.5 bg-stone-50 px-2.5 py-1.5 rounded-lg border border-stone-200">
-              <span className="text-stone-500 font-medium">Stock Status:</span>
+            <div className="col-span-2 sm:col-span-1 flex items-center gap-1.5 bg-stone-50 hover:bg-stone-100/80 px-2 sm:px-2.5 py-1.5 rounded-lg border border-stone-200 min-w-0 transition-colors">
+              <span className="text-stone-500 font-medium shrink-0">
+                <span className="hidden sm:inline">Stock </span>Status:
+              </span>
               <select
                 id="stock-status-filter"
                 value={stockStatusFilter}
                 onChange={(e) => setStockStatusFilter(e.target.value as any)}
-                className="bg-transparent font-semibold text-stone-800 focus:outline-hidden"
+                className="bg-transparent font-semibold text-stone-800 focus:outline-hidden w-full cursor-pointer truncate"
               >
                 <option value="ALL">All Stock Levels</option>
                 <option value="NORMAL">Normal Stock (≥ Min)</option>
@@ -548,7 +552,7 @@ export const ProductsPage: React.FC = () => {
 
         {/* Active Filters Pill Bar if filtered */}
         {(searchQuery || selectedCategory !== 'ALL' || productStatusFilter !== 'ALL' || stockStatusFilter !== 'ALL') && (
-          <div className="flex items-center gap-2 pt-2 border-t border-stone-100 text-xs text-stone-500">
+          <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2 pt-1.5 sm:pt-2 border-t border-stone-100 text-[11px] sm:text-xs text-stone-500">
             <span>Showing {filteredProducts.length} of {products.length} products</span>
             <button
               type="button"
@@ -558,7 +562,7 @@ export const ProductsPage: React.FC = () => {
                 setProductStatusFilter('ALL');
                 setStockStatusFilter('ALL');
               }}
-              className="text-emerald-700 hover:underline font-medium"
+              className="text-emerald-700 hover:text-emerald-800 font-medium cursor-pointer hover:underline"
             >
               Reset filters
             </button>

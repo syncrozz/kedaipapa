@@ -86,9 +86,9 @@ export const AppShell: React.FC<AppShellProps> = ({
     <div className="min-h-screen bg-stone-100/70 text-stone-900 flex flex-col font-sans antialiased">
       {/* Top Application Header */}
       <header className="bg-white border-b border-stone-200 sticky top-0 z-30 shadow-2xs">
-        <div className="w-full px-2 sm:px-4 lg:px-6">
-          <div className="flex items-center justify-between h-14 w-full gap-2 sm:gap-4">
-            {/* Left: Brand / Store Badge */}
+        <div className="w-full px-2.5 sm:px-4 lg:px-6">
+          <div className="flex flex-wrap sm:flex-nowrap items-center justify-between min-h-13 sm:h-14 py-1.5 sm:py-0 w-full gap-y-1.5 gap-x-2 sm:gap-x-4">
+            {/* Left: Brand / Store Badge & Mobile Menu */}
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
               <button
                 type="button"
@@ -154,9 +154,8 @@ export const AppShell: React.FC<AppShellProps> = ({
               })}
             </nav>
 
-            {/* Right: Cloud Sync, Admin Mode Button, Role Badge & POS Quick Launch */}
-            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              {/* Cloud Sync Status Indicator */}
+            {/* Cloud Sync Status Indicator (Header Top Right on Mobile, Inline on Desktop) */}
+            <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-0">
               <div className="relative">
                 <button
                   type="button"
@@ -164,28 +163,31 @@ export const AppShell: React.FC<AppShellProps> = ({
                   onClick={handleHeaderSync}
                   disabled={isManualSyncing}
                   title={`Firebase Cloud Sync: ${cloudSyncStatus} ${lastCloudSync ? `(Terakhir disegerakkan: ${lastCloudSync.toLocaleTimeString()})` : ''}. Klik untuk selaraskan data peranti ini dengan cloud.`}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 transition cursor-pointer text-xs"
+                  className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 transition cursor-pointer text-xs"
                 >
                   {isManualSyncing || cloudSyncStatus === 'SYNCING' ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 text-amber-600 animate-spin" />
-                      <span className="hidden sm:inline font-medium text-[11px] text-amber-800">
-                        Menyegerak...
+                      <span className="font-medium text-[11px] text-amber-800">
+                        <span className="hidden xs:inline">Menyegerak...</span>
+                        <span className="xs:hidden">Sync</span>
                       </span>
                     </>
                   ) : cloudSyncStatus === 'CONNECTED' ? (
                     <>
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                       <Cloud className="w-3.5 h-3.5 text-emerald-600" />
-                      <span className="hidden sm:inline font-medium text-[11px] text-emerald-800">
-                        Cloud Sync Aktif
+                      <span className="font-medium text-[11px] text-emerald-800">
+                        <span className="hidden sm:inline">Cloud Sync Aktif</span>
+                        <span className="sm:hidden text-[10px] xs:text-[11px]">Cloud</span>
                       </span>
                     </>
                   ) : (
                     <>
                       <CloudOff className="w-3.5 h-3.5 text-stone-400" />
-                      <span className="hidden sm:inline font-medium text-[11px] text-stone-600">
-                        Luar Talian
+                      <span className="font-medium text-[11px] text-stone-600">
+                        <span className="hidden sm:inline">Luar Talian</span>
+                        <span className="sm:hidden text-[10px] xs:text-[11px]">Offline</span>
                       </span>
                     </>
                   )}
@@ -198,7 +200,10 @@ export const AppShell: React.FC<AppShellProps> = ({
                   </div>
                 )}
               </div>
+            </div>
 
+            {/* Action Buttons: Admin Mode + Open POS (Reflows to clean sub-row on Mobile, In-line on Desktop) */}
+            <div className="w-full sm:w-auto flex items-center gap-2 pt-1 sm:pt-0 border-t border-stone-100 sm:border-0 shrink-0">
               {/* Admin Mode Toggle Button (SES 4.4 Locked Part A: Default Orange [ Admin ], Active Green [ Admin Mode Aktif ]) */}
               <button
                 type="button"
@@ -210,7 +215,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     openPinModal();
                   }
                 }}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition shadow-2xs cursor-pointer ${
+                className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition shadow-2xs cursor-pointer ${
                   isAdminMode
                     ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                     : 'bg-orange-600 hover:bg-orange-700 text-white'
@@ -218,7 +223,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 title={isAdminMode ? 'Klik untuk keluar dari Mod Admin' : 'Klik untuk buka Mod Admin'}
               >
                 {isAdminMode ? <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
-                <span>{isAdminMode ? 'Admin Mode Aktif' : 'Admin'}</span>
+                <span className="whitespace-nowrap">{isAdminMode ? 'Admin Mode Aktif' : 'Admin'}</span>
               </button>
 
               {/* Role pill showing Admin / Store Owner */}
@@ -233,10 +238,10 @@ export const AppShell: React.FC<AppShellProps> = ({
                   type="button"
                   id="header-quick-pos-btn"
                   onClick={() => onNavigate('pos')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition shadow-2xs cursor-pointer"
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition shadow-2xs cursor-pointer"
                 >
                   <ShoppingCart className="w-3.5 h-3.5" />
-                  <span>Open POS</span>
+                  <span className="whitespace-nowrap">Open POS</span>
                 </button>
               )}
             </div>

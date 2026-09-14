@@ -18,7 +18,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 
 export default function App() {
-  const [activePage, setActivePage] = useState<ActivePage>('dashboard');
+  const [activePage, setActivePage] = useState<ActivePage>('pos');
 
   const renderActivePage = () => {
     switch (activePage) {
