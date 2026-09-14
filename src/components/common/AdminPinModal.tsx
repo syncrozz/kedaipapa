@@ -98,10 +98,7 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({
   return (
     <div
       id="admin-pin-modal-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs select-none"
     >
       <div
         className="bg-white rounded-xl shadow-2xl border border-stone-200 w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-150"

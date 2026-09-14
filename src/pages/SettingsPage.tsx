@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Settings,
   Store,
@@ -124,6 +124,28 @@ export const SettingsPage: React.FC = () => {
   const [staffFormRole, setStaffFormRole] = useState<StaffRole>('CASHIER');
   const [staffFormActive, setStaffFormActive] = useState(true);
   const [staffFormError, setStaffFormError] = useState<string | null>(null);
+
+  // Keyboard Escape listener to close active modals
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (restoreConfirmPayload) {
+          setRestoreConfirmPayload(null);
+        } else if (isResetModalOpen) {
+          setIsResetModalOpen(false);
+        } else if (isStaffModalOpen) {
+          setIsStaffModalOpen(false);
+          setEditingStaff(null);
+        }
+      }
+    };
+    if (isStaffModalOpen || restoreConfirmPayload || isResetModalOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isStaffModalOpen, restoreConfirmPayload, isResetModalOpen]);
 
   const handleSaveStore = (e: React.FormEvent) => {
     e.preventDefault();

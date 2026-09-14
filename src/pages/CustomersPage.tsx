@@ -3,7 +3,7 @@
  * Part 07: Optional Retail Modules
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Users,
   Plus,
@@ -72,6 +72,28 @@ export const CustomersPage: React.FC = () => {
     () => DuplicateAuditService.auditCustomers(customers),
     [customers]
   );
+
+  // Keyboard Escape listener to close active modals
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (viewReceiptSale) {
+          setViewReceiptSale(null);
+        } else if (selectedCustomerForDetail) {
+          setSelectedCustomerForDetail(null);
+        } else if (isAddModalOpen || editingCustomer) {
+          setIsAddModalOpen(false);
+          setEditingCustomer(null);
+        }
+      }
+    };
+    if (isAddModalOpen || editingCustomer || selectedCustomerForDetail || viewReceiptSale) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isAddModalOpen, editingCustomer, selectedCustomerForDetail, viewReceiptSale]);
 
   // Form State
   const [formCode, setFormCode] = useState('');

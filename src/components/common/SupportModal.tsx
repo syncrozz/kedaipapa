@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Download, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface SupportModalProps {
@@ -13,6 +13,18 @@ const LOCKED_QR_URL =
 export const SupportModal: React.FC<SupportModalProps> = ({ isOpen, onClose }) => {
   const [howToPayOpen, setHowToPayOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -42,10 +54,7 @@ export const SupportModal: React.FC<SupportModalProps> = ({ isOpen, onClose }) =
   return (
     <div
       id="support-modal-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200 select-none"
       role="dialog"
       aria-modal="true"
       aria-labelledby="support-modal-title"

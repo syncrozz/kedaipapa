@@ -6,7 +6,7 @@
  * SUPPLIER → PURCHASE → STOCK RECEIVED → INVENTORY (STOCK_IN)
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Truck,
   Plus,
@@ -57,6 +57,25 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
   const [selectedPurchaseForDetail, setSelectedPurchaseForDetail] = useState<Purchase | null>(null);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
+
+  // Keyboard Escape listener to close active modals
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selectedPurchaseForDetail) {
+          setSelectedPurchaseForDetail(null);
+        } else if (isNewPurchaseModalOpen) {
+          setIsNewPurchaseModalOpen(false);
+        }
+      }
+    };
+    if (isNewPurchaseModalOpen || selectedPurchaseForDetail) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isNewPurchaseModalOpen, selectedPurchaseForDetail]);
 
   // New Purchase Form State
   const [formSupplierId, setFormSupplierId] = useState('');

@@ -3,7 +3,7 @@
  * Part 05: Purchasing + Supplier Management
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Building2,
   Plus,
@@ -59,6 +59,26 @@ export const SuppliersPage: React.FC = () => {
     () => DuplicateAuditService.auditSuppliers(suppliers),
     [suppliers]
   );
+
+  // Keyboard Escape listener to close active modals
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selectedSupplierForDetail) {
+          setSelectedSupplierForDetail(null);
+        } else if (isAddModalOpen || editingSupplier) {
+          setIsAddModalOpen(false);
+          setEditingSupplier(null);
+        }
+      }
+    };
+    if (isAddModalOpen || editingSupplier || selectedSupplierForDetail) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isAddModalOpen, editingSupplier, selectedSupplierForDetail]);
 
   // Form State
   const [formCode, setFormCode] = useState('');
