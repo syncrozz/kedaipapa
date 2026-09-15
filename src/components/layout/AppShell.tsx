@@ -162,34 +162,19 @@ export const AppShell: React.FC<AppShellProps> = ({
                   id="header-cloud-sync-btn"
                   onClick={handleHeaderSync}
                   disabled={isManualSyncing}
+                  aria-label="Firebase Cloud Sync"
                   title={`Firebase Cloud Sync: ${cloudSyncStatus} ${lastCloudSync ? `(Terakhir disegerakkan: ${lastCloudSync.toLocaleTimeString()})` : ''}. Klik untuk selaraskan data peranti ini dengan cloud.`}
-                  className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 transition cursor-pointer text-xs"
+                  className="relative p-2 rounded-lg border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 transition cursor-pointer flex items-center justify-center"
                 >
                   {isManualSyncing || cloudSyncStatus === 'SYNCING' ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 text-amber-600 animate-spin" />
-                      <span className="font-medium text-[11px] text-amber-800">
-                        <span className="hidden xs:inline">Menyegerak...</span>
-                        <span className="xs:hidden">Sync</span>
-                      </span>
-                    </>
+                    <RefreshCw className="w-4 h-4 text-amber-600 animate-spin" />
                   ) : cloudSyncStatus === 'CONNECTED' ? (
-                    <>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <Cloud className="w-3.5 h-3.5 text-emerald-600" />
-                      <span className="font-medium text-[11px] text-emerald-800">
-                        <span className="hidden sm:inline">Cloud Sync Aktif</span>
-                        <span className="sm:hidden text-[10px] xs:text-[11px]">Cloud</span>
-                      </span>
-                    </>
+                    <div className="relative flex items-center justify-center">
+                      <Cloud className="w-4 h-4 text-emerald-600" />
+                      <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white animate-pulse" />
+                    </div>
                   ) : (
-                    <>
-                      <CloudOff className="w-3.5 h-3.5 text-stone-400" />
-                      <span className="font-medium text-[11px] text-stone-600">
-                        <span className="hidden sm:inline">Luar Talian</span>
-                        <span className="sm:hidden text-[10px] xs:text-[11px]">Offline</span>
-                      </span>
-                    </>
+                    <CloudOff className="w-4 h-4 text-stone-400" />
                   )}
                 </button>
 

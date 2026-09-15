@@ -32,6 +32,191 @@ import { CustomerService } from '../services/customerService';
 import { LoyaltyService } from '../services/loyaltyService';
 import { SalesService } from '../services/salesService';
 
+interface CategoryPastelTheme {
+  cardBg: string;
+  cardBorder: string;
+  hoverBorder: string;
+  hoverBg: string;
+  badgeBg: string;
+  badgeText: string;
+  badgeBorder: string;
+  profitText: string;
+}
+
+const PASTEL_PALETTES: CategoryPastelTheme[] = [
+  // 0: Soft Warm Amber / Buttercream (Staples & Grains)
+  {
+    cardBg: 'bg-amber-50/75',
+    cardBorder: 'border-amber-200/90',
+    hoverBorder: 'hover:border-amber-400',
+    hoverBg: 'hover:bg-amber-50',
+    badgeBg: 'bg-amber-100/90',
+    badgeText: 'text-amber-900',
+    badgeBorder: 'border-amber-300/80',
+    profitText: 'text-amber-800',
+  },
+  // 1: Soft Sky / Baby Blue (Beverages / Minuman)
+  {
+    cardBg: 'bg-sky-50/75',
+    cardBorder: 'border-sky-200/90',
+    hoverBorder: 'hover:border-sky-400',
+    hoverBg: 'hover:bg-sky-50',
+    badgeBg: 'bg-sky-100/90',
+    badgeText: 'text-sky-900',
+    badgeBorder: 'border-sky-300/80',
+    profitText: 'text-sky-800',
+  },
+  // 2: Soft Mint / Sage Green (Fresh & Dairy)
+  {
+    cardBg: 'bg-emerald-50/70',
+    cardBorder: 'border-emerald-200/90',
+    hoverBorder: 'hover:border-emerald-400',
+    hoverBg: 'hover:bg-emerald-50',
+    badgeBg: 'bg-emerald-100/90',
+    badgeText: 'text-emerald-900',
+    badgeBorder: 'border-emerald-300/80',
+    profitText: 'text-emerald-800',
+  },
+  // 3: Soft Violet / Iris Pastel (Snacks & Biscuits / Rak Depan)
+  {
+    cardBg: 'bg-violet-50/75',
+    cardBorder: 'border-violet-200/90',
+    hoverBorder: 'hover:border-violet-400',
+    hoverBg: 'hover:bg-violet-50',
+    badgeBg: 'bg-violet-100/90',
+    badgeText: 'text-violet-900',
+    badgeBorder: 'border-violet-300/80',
+    profitText: 'text-violet-800',
+  },
+  // 4: Soft Lavender / Lilac (Household / Personal Care)
+  {
+    cardBg: 'bg-purple-50/70',
+    cardBorder: 'border-purple-200/90',
+    hoverBorder: 'hover:border-purple-400',
+    hoverBg: 'hover:bg-purple-50',
+    badgeBg: 'bg-purple-100/90',
+    badgeText: 'text-purple-900',
+    badgeBorder: 'border-purple-300/80',
+    profitText: 'text-purple-800',
+  },
+  // 5: Soft Peach / Warm Apricot (Cooking Essentials)
+  {
+    cardBg: 'bg-orange-50/70',
+    cardBorder: 'border-orange-200/90',
+    hoverBorder: 'hover:border-orange-400',
+    hoverBg: 'hover:bg-orange-50',
+    badgeBg: 'bg-orange-100/90',
+    badgeText: 'text-orange-900',
+    badgeBorder: 'border-orange-300/80',
+    profitText: 'text-orange-800',
+  },
+  // 6: Soft Aqua / Seafoam Teal (Frozen / Seafood / Others)
+  {
+    cardBg: 'bg-teal-50/70',
+    cardBorder: 'border-teal-200/90',
+    hoverBorder: 'hover:border-teal-400',
+    hoverBg: 'hover:bg-teal-50',
+    badgeBg: 'bg-teal-100/90',
+    badgeText: 'text-teal-900',
+    badgeBorder: 'border-teal-300/80',
+    profitText: 'text-teal-800',
+  },
+  // 7: Soft Periwinkle / Indigo (Instant Food / Noodles)
+  {
+    cardBg: 'bg-indigo-50/70',
+    cardBorder: 'border-indigo-200/90',
+    hoverBorder: 'hover:border-indigo-400',
+    hoverBg: 'hover:bg-indigo-50',
+    badgeBg: 'bg-indigo-100/90',
+    badgeText: 'text-indigo-900',
+    badgeBorder: 'border-indigo-300/80',
+    profitText: 'text-indigo-800',
+  },
+  // 8: Soft Honey Wheat / Golden Pastel (Bakery & Bread)
+  {
+    cardBg: 'bg-yellow-50/75',
+    cardBorder: 'border-yellow-200/90',
+    hoverBorder: 'hover:border-yellow-400',
+    hoverBg: 'hover:bg-yellow-50',
+    badgeBg: 'bg-yellow-100/90',
+    badgeText: 'text-yellow-900',
+    badgeBorder: 'border-yellow-300/80',
+    profitText: 'text-yellow-800',
+  },
+  // 9: Soft Pistachio / Herb Green (Confectionery / Sweets)
+  {
+    cardBg: 'bg-lime-50/75',
+    cardBorder: 'border-lime-200/90',
+    hoverBorder: 'hover:border-lime-400',
+    hoverBg: 'hover:bg-lime-50',
+    badgeBg: 'bg-lime-100/90',
+    badgeText: 'text-lime-900',
+    badgeBorder: 'border-lime-300/80',
+    profitText: 'text-lime-800',
+  },
+  // 10: Soft Cyan / Glacier (Chilled / Ice)
+  {
+    cardBg: 'bg-cyan-50/70',
+    cardBorder: 'border-cyan-200/90',
+    hoverBorder: 'hover:border-cyan-400',
+    hoverBg: 'hover:bg-cyan-50',
+    badgeBg: 'bg-cyan-100/90',
+    badgeText: 'text-cyan-900',
+    badgeBorder: 'border-cyan-300/80',
+    profitText: 'text-cyan-800',
+  },
+];
+
+const getCategoryPastelTheme = (category: string): CategoryPastelTheme => {
+  const norm = (category || '').trim().toLowerCase();
+
+  // Priority specific mapping so neighboring categories have distinct pastel hues:
+  // Snacks & Biscuits -> Soft Blush / Rose Pink (Palet 3)
+  if (norm.includes('snack') || norm.includes('biscuit') || norm.includes('kuih') || norm.includes('biskut') || norm.includes('keropok') || norm.includes('kerepek')) {
+    return PASTEL_PALETTES[3]; // Blush / Rose Pink
+  }
+  // Staples & Grains -> Soft Warm Amber / Buttercream (Palet 0)
+  if (norm.includes('grain') || norm.includes('staple') || norm.includes('beras') || norm.includes('gula') || norm.includes('flour') || norm.includes('tepung')) {
+    return PASTEL_PALETTES[0]; // Warm Amber
+  }
+  // Beverages -> Soft Sky / Baby Blue (Palet 1)
+  if (norm.includes('beverage') || norm.includes('minum') || norm.includes('drink') || norm.includes('water') || norm.includes('air') || norm.includes('juice') || norm.includes('kopi')) {
+    return PASTEL_PALETTES[1]; // Sky Blue
+  }
+  // Fresh & Dairy -> Soft Mint / Sage Green (Palet 2)
+  if (norm.includes('fresh') || norm.includes('dairy') || norm.includes('sayur') || norm.includes('telur') || norm.includes('susu') || norm.includes('segar')) {
+    return PASTEL_PALETTES[2]; // Mint / Sage Green
+  }
+  // Bakery -> Soft Honey Wheat / Golden Butter (Palet 8)
+  if (norm.includes('baker') || norm.includes('roti') || norm.includes('bread') || norm.includes('kek') || norm.includes('cake')) {
+    return PASTEL_PALETTES[8]; // Honey Wheat / Golden
+  }
+  // Cooking Essentials -> Soft Peach / Warm Apricot (Palet 5)
+  if (norm.includes('cook') || norm.includes('minyak') || norm.includes('oil') || norm.includes('rempah') || norm.includes('sos') || norm.includes('kicap') || norm.includes('masakan')) {
+    return PASTEL_PALETTES[5]; // Peach / Apricot
+  }
+  // Instant Food -> Soft Periwinkle / Indigo (Palet 7)
+  if (norm.includes('instant') || norm.includes('noodle') || norm.includes('maggi') || norm.includes('mee') || norm.includes('pasta') || norm.includes('bihun')) {
+    return PASTEL_PALETTES[7]; // Indigo / Periwinkle
+  }
+  // Household & Personal Care -> Soft Lavender / Lilac (Palet 4)
+  if (norm.includes('clean') || norm.includes('house') || norm.includes('sabun') || norm.includes('personal') || norm.includes('beauty') || norm.includes('kebersihan')) {
+    return PASTEL_PALETTES[4]; // Lavender / Lilac
+  }
+  // Frozen & Seafood -> Soft Seafoam Teal (Palet 6)
+  if (norm.includes('frozen') || norm.includes('seafood') || norm.includes('beku') || norm.includes('ikan') || norm.includes('daging') || norm.includes('ayam')) {
+    return PASTEL_PALETTES[6]; // Teal / Aqua
+  }
+
+  // Deterministic hash for any other custom category
+  let hash = 0;
+  for (let i = 0; i < norm.length; i++) {
+    hash = norm.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % PASTEL_PALETTES.length;
+  return PASTEL_PALETTES[index];
+};
+
 export const PosPage: React.FC = () => {
   const {
     store,
@@ -470,21 +655,38 @@ export const PosPage: React.FC = () => {
             </div>
 
             {/* Category Filter Chips */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-3 py-1.5 rounded-lg whitespace-nowrap font-medium transition ${
-                    selectedCategory === cat
-                      ? 'bg-stone-900 text-white shadow-2xs'
-                      : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs no-scrollbar">
+              {categories.map((cat, idx) => {
+                const isSelected = selectedCategory === cat;
+                const catPastel = cat === 'ALL' ? null : getCategoryPastelTheme(cat);
+                const buttonId = `category-filter-${cat.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+                return (
+                  <button
+                    key={cat}
+                    id={buttonId}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-3.5 py-1.5 rounded-lg whitespace-nowrap font-semibold transition text-xs flex items-center gap-1.5 shadow-2xs ${
+                      isSelected
+                        ? catPastel
+                          ? `bg-stone-900 text-white ring-2 ring-stone-900 shadow-xs`
+                          : 'bg-stone-900 text-white shadow-xs'
+                        : catPastel
+                        ? `${catPastel.cardBg} ${catPastel.badgeText} border-2 ${catPastel.badgeBorder} hover:brightness-95 hover:shadow-xs`
+                        : 'bg-stone-100 text-stone-700 border border-stone-200 hover:bg-stone-200'
+                    }`}
+                  >
+                    {catPastel && (
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          isSelected ? 'bg-white' : `${catPastel.badgeBg} border ${catPastel.cardBorder}`
+                        }`}
+                      />
+                    )}
+                    <span>{cat}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -497,6 +699,7 @@ export const PosPage: React.FC = () => {
                 const qtyInCart = cartItem ? cartItem.quantity : 0;
                 const isLowStock = product.currentStock <= product.minimumStock && inStock;
                 const unitProfit = Number((product.sellingPrice - product.costPrice).toFixed(2));
+                const pastel = getCategoryPastelTheme(product.category);
 
                 return (
                   <div
@@ -505,10 +708,10 @@ export const PosPage: React.FC = () => {
                     onClick={() => {
                       if (inStock) addToCart(product);
                     }}
-                    className={`bg-white rounded-xl border p-3 flex flex-col justify-between transition text-left select-none relative ${
+                    className={`rounded-xl border p-3 flex flex-col justify-between transition text-left select-none relative shadow-2xs ${
                       !inStock
                         ? 'opacity-60 border-stone-200 cursor-not-allowed bg-stone-50'
-                        : 'border-stone-200 hover:border-emerald-500 hover:shadow-xs cursor-pointer active:scale-98'
+                        : `${pastel.cardBg} ${pastel.cardBorder} ${pastel.hoverBorder} ${pastel.hoverBg} hover:shadow-xs cursor-pointer active:scale-98`
                     }`}
                   >
                     {/* Badge showing quantity in active ticket */}
@@ -520,7 +723,7 @@ export const PosPage: React.FC = () => {
 
                     <div>
                       {product.imageUrl && (
-                        <div className="w-full h-20 mb-2 rounded-lg overflow-hidden bg-stone-100 border border-stone-100">
+                        <div className="w-full h-20 mb-2 rounded-lg overflow-hidden bg-white/80 border border-stone-200/50">
                           <img
                             src={product.imageUrl}
                             alt={product.name}
@@ -530,9 +733,13 @@ export const PosPage: React.FC = () => {
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between text-[10px] text-stone-400 mb-1">
-                        <span className="font-mono font-medium">{product.sku}</span>
-                        <span className="truncate max-w-[80px]">{product.category}</span>
+                      <div className="flex items-center justify-between text-[10px] mb-1.5 gap-1">
+                        <span className="font-mono font-medium text-stone-500 bg-white/80 px-1.5 py-0.5 rounded border border-stone-200/60 shadow-2xs">
+                          {product.sku}
+                        </span>
+                        <span className={`truncate max-w-[90px] font-semibold px-1.5 py-0.5 rounded border ${pastel.badgeBg} ${pastel.badgeText} ${pastel.badgeBorder}`}>
+                          {product.category}
+                        </span>
                       </div>
 
                       <h4 className="text-xs font-semibold text-stone-900 line-clamp-2 leading-snug">
@@ -540,30 +747,30 @@ export const PosPage: React.FC = () => {
                       </h4>
                     </div>
 
-                    <div className="mt-3 pt-2 border-t border-stone-100 flex items-end justify-between">
+                    <div className="mt-3 pt-2 border-t border-stone-200/60 flex items-end justify-between">
                       <div>
                         <div className="text-sm font-bold font-mono text-stone-900">
                           {store.currency} {product.sellingPrice.toFixed(2)}
                         </div>
-                        <div className="text-[10px] text-emerald-700 font-medium">
-                          +{store.currency} {unitProfit.toFixed(2)} profit
+                        <div className={`text-[10px] font-semibold ${pastel.profitText}`}>
+                          +{store.currency} {unitProfit.toFixed(2)} untung
                         </div>
                       </div>
 
                       <div className="text-right">
                         {!inStock ? (
                           <span className="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
-                            Out of Stock
+                            Habis Stok
                           </span>
                         ) : (
                           <span
                             className={`text-[10px] font-mono font-medium px-1.5 py-0.5 rounded ${
                               isLowStock
-                                ? 'bg-amber-50 text-amber-800 border border-amber-200 font-semibold'
-                                : 'text-stone-500 bg-stone-100'
+                                ? 'bg-amber-100/90 text-amber-900 border border-amber-300/80 font-bold animate-pulse'
+                                : 'text-stone-600 bg-white/80 border border-stone-200/60'
                             }`}
                           >
-                            {product.currentStock} left
+                            {product.currentStock} baki
                           </span>
                         )}
                       </div>
