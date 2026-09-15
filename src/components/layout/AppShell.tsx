@@ -23,6 +23,7 @@ import {
 import { ActivePage } from '../../types';
 import { useStore } from '../../context/StoreContext';
 import { SupportModal } from '../common/SupportModal';
+import { KEDAI_PAPA_ASSETS } from '../../constants/branding';
 
 interface AppShellProps {
   activePage: ActivePage;
@@ -118,8 +119,15 @@ export const AppShell: React.FC<AppShellProps> = ({
                   }
                 }}
               >
-                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold shadow-2xs group-hover:scale-105 transition-transform">
-                  <StoreIcon className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl overflow-hidden bg-white border border-stone-200/90 shadow-2xs group-hover:scale-105 transition-transform flex items-center justify-center p-0.5 shrink-0">
+                  <img
+                    src={KEDAI_PAPA_ASSETS.logoSvg}
+                    alt="Kedai PAPA Logo"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = KEDAI_PAPA_ASSETS.local.logoSvg;
+                    }}
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5">

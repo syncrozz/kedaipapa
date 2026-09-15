@@ -622,7 +622,7 @@ export const ProductsPage: React.FC = () => {
                               src={p.imageUrl}
                               alt={p.name}
                               referrerPolicy="no-referrer"
-                              className="w-10 h-10 rounded-lg object-cover border border-stone-200 shrink-0"
+                              className="w-10 h-10 rounded-lg object-contain p-0.5 bg-white border border-stone-200 shrink-0 shadow-2xs"
                             />
                           ) : (
                             <div className="w-10 h-10 rounded-lg bg-stone-100 text-stone-400 flex items-center justify-center shrink-0 border border-stone-200">

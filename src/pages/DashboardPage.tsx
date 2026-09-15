@@ -23,6 +23,7 @@ import { ActivePage, Product } from '../types';
 import { ReportingService } from '../services/reportingService';
 import { InventoryService } from '../services/inventoryService';
 import { formatProfit, getProfitColorClass } from '../services/formatters';
+import { KEDAI_PAPA_ASSETS } from '../constants/branding';
 
 interface DashboardPageProps {
   onNavigate: (page: ActivePage) => void;
@@ -52,17 +53,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
       {/* Brand / Hero Area */}
       <div className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-teal-800 rounded-2xl p-5 sm:p-6 text-white shadow-xs relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-5">
         <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-white/5 rounded-full pointer-events-none" />
-        <div className="relative z-10 space-y-1.5 max-w-xl">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 border border-white/20 text-xs font-semibold text-emerald-100 backdrop-blur-xs">
-            <StoreIcon className="w-3.5 h-3.5" />
-            <span>{store.name} • Pusat Kawalan Peruncitan</span>
+        <div className="relative z-10 flex items-start gap-4 max-w-xl">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white p-1.5 shadow-sm border border-white/40 flex items-center justify-center shrink-0">
+            <img
+              src={KEDAI_PAPA_ASSETS.logoSvg}
+              alt="Kedai PAPA"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = KEDAI_PAPA_ASSETS.local.logoSvg;
+              }}
+              className="w-full h-full object-contain"
+            />
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-            Selamat Datang ke Kedai PAPA
-          </h1>
-          <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
-            Sistem pengurusan kedai runcit yang mudah, fleksibel dan lengkap. Pantau jualan harian, baki inventori, dan transaksi secara masa nyata.
-          </p>
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 border border-white/20 text-xs font-semibold text-emerald-100 backdrop-blur-xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+              <span>{store.name} • Pusat Kawalan Peruncitan</span>
+            </div>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+              Selamat Datang ke Kedai PAPA
+            </h1>
+            <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
+              Sistem pengurusan kedai runcit yang mudah, fleksibel dan lengkap. Pantau jualan harian, baki inventori, dan transaksi secara masa nyata.
+            </p>
+          </div>
         </div>
 
         <div className="relative z-10 flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">

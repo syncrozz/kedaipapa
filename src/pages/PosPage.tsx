@@ -33,6 +33,7 @@ import { Modal } from '../components/common/Modal';
 import { CustomerService } from '../services/customerService';
 import { LoyaltyService } from '../services/loyaltyService';
 import { SalesService } from '../services/salesService';
+import { KEDAI_PAPA_ASSETS } from '../constants/branding';
 import { InventoryService } from '../services/inventoryService';
 import { StaffService, STORE_OWNER_ID, STORE_OWNER_NAME } from '../services/staffService';
 import { STORAGE_KEYS } from '../services/storageService';
@@ -804,18 +805,25 @@ export const PosPage: React.FC = () => {
 
                     <div>
                       {/* Product Image / Retail Thumbnail */}
-                      <div className="w-full h-24 mb-2.5 rounded-xl overflow-hidden bg-white/90 border border-stone-200/60 relative flex items-center justify-center">
+                      <div className="w-full h-28 sm:h-32 mb-2.5 rounded-xl overflow-hidden bg-white border border-stone-200/70 p-2 relative flex items-center justify-center shadow-2xs">
                         {product.imageUrl ? (
                           <img
                             src={product.imageUrl}
                             alt={product.name}
                             referrerPolicy="no-referrer"
-                            className="w-full h-full object-cover"
+                            className="max-h-full max-w-full object-contain transition-transform duration-200 hover:scale-105"
                           />
                         ) : (
-                          <div className={`w-full h-full flex flex-col items-center justify-center ${pastel.cardBg}`}>
-                            <Package className={`w-7 h-7 ${pastel.badgeText} opacity-40`} />
-                            <span className="text-[9px] text-stone-400 font-medium mt-0.5">Kedai PAPA</span>
+                          <div className={`w-full h-full rounded-lg flex flex-col items-center justify-center p-2 ${pastel.cardBg}`}>
+                            <img
+                              src={KEDAI_PAPA_ASSETS.logoSvg}
+                              alt="Kedai PAPA"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = KEDAI_PAPA_ASSETS.local.logoSvg;
+                              }}
+                              className="w-8 h-8 object-contain opacity-60"
+                            />
+                            <span className="text-[10px] text-stone-400 font-medium mt-1">Kedai PAPA</span>
                           </div>
                         )}
                       </div>

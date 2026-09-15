@@ -28,6 +28,7 @@ import {
 import { useStore } from '../context/StoreContext';
 import { UserRole, StaffRole, StaffUser } from '../types';
 import { VerificationAuditSuite } from '../components/verification/VerificationAuditSuite';
+import { KEDAI_PAPA_ASSETS } from '../constants/branding';
 import { StaffService } from '../services/staffService';
 import { StorageService, StoreBackupPayload } from '../services/storageService';
 
