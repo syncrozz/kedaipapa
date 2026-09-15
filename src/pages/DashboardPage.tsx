@@ -13,6 +13,9 @@ import {
   Percent,
   XCircle,
   Tag,
+  Store as StoreIcon,
+  Sparkles,
+  CheckCircle2,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { StatCard } from '../components/common/StatCard';
@@ -46,43 +49,83 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
 
   return (
     <div className="space-y-6">
+      {/* Brand / Hero Area */}
+      <div className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-teal-800 rounded-2xl p-5 sm:p-6 text-white shadow-xs relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-5">
+        <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-white/5 rounded-full pointer-events-none" />
+        <div className="relative z-10 space-y-1.5 max-w-xl">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 border border-white/20 text-xs font-semibold text-emerald-100 backdrop-blur-xs">
+            <StoreIcon className="w-3.5 h-3.5" />
+            <span>{store.name} • Pusat Kawalan Peruncitan</span>
+          </div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+            Selamat Datang ke Kedai PAPA
+          </h1>
+          <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
+            Sistem pengurusan kedai runcit yang mudah, fleksibel dan lengkap. Pantau jualan harian, baki inventori, dan transaksi secara masa nyata.
+          </p>
+        </div>
+
+        <div className="relative z-10 flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            id="dashboard-hero-open-pos-btn"
+            onClick={() => onNavigate('pos')}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-emerald-800 font-bold text-xs sm:text-sm hover:bg-emerald-50 transition shadow-xs cursor-pointer"
+          >
+            <ShoppingCart className="w-4 h-4 text-emerald-700" />
+            <span>Buka Kaunter POS</span>
+          </button>
+          <button
+            type="button"
+            id="dashboard-hero-check-stock-btn"
+            onClick={() => onNavigate('inventory')}
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-emerald-900/60 hover:bg-emerald-900/80 border border-white/20 text-white font-semibold text-xs sm:text-sm transition cursor-pointer"
+          >
+            <Boxes className="w-4 h-4" />
+            <span>Semak Stok</span>
+          </button>
+        </div>
+      </div>
+
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-stone-900 tracking-tight">
+          <h2 className="text-xl font-bold text-stone-900 tracking-tight">
             Dashboard Overview
-          </h1>
-          <p className="text-sm text-stone-500">
+          </h2>
+          <p className="text-xs text-stone-500">
             Real-time retail business intelligence for {store.name}. Grounded in completed sales, cost snapshots, and active inventory.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-stone-500 bg-white border border-stone-200 px-3 py-1.5 rounded-lg shadow-2xs">
+        <div className="flex items-center gap-2 text-xs text-stone-500 bg-white border border-stone-200 px-3 py-1.5 rounded-xl shadow-2xs">
           <Clock className="w-3.5 h-3.5 text-stone-400" />
           <span>Currency: <strong>{store.currency}</strong></span>
         </div>
       </div>
 
       {/* The 4 Fundamental Retail Questions Panel */}
-      <div className="bg-white rounded-xl border border-stone-200 p-5 shadow-xs">
+      <div className="bg-white rounded-2xl border border-stone-200/90 p-5 shadow-2xs">
         <div className="flex items-center gap-2 mb-3">
-          <HelpCircle className="w-4 h-4 text-emerald-700" />
-          <h2 className="text-sm font-semibold text-stone-900 tracking-tight">
+          <div className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700">
+            <HelpCircle className="w-4 h-4" />
+          </div>
+          <h2 className="text-sm font-bold text-stone-900 tracking-tight">
             The 4 Fundamental Retail Questions
           </h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
-          <div className="p-3 rounded-lg bg-stone-50 border border-stone-100">
+          <div className="p-3.5 rounded-xl bg-stone-50/80 border border-stone-200/80 hover:bg-stone-50 transition">
             <span className="font-semibold text-stone-600 block mb-1">1. What products do I sell?</span>
-            <div className="text-base font-bold text-stone-900">
+            <div className="text-base font-bold text-stone-900 font-mono">
               {kpis.activeProductsCount} Active SKUs
             </div>
             <span className="text-stone-500 mt-0.5 block">{products.length} total registered in catalog</span>
           </div>
 
-          <div className="p-3 rounded-lg bg-stone-50 border border-stone-100">
+          <div className="p-3.5 rounded-xl bg-stone-50/80 border border-stone-200/80 hover:bg-stone-50 transition">
             <span className="font-semibold text-stone-600 block mb-1">2. How many units do I have?</span>
-            <div className="text-base font-bold text-stone-900">
+            <div className="text-base font-bold text-stone-900 font-mono">
               {kpis.totalInventoryUnits} Units on hand
             </div>
             <span className="text-stone-500 mt-0.5 block">
@@ -90,17 +133,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
             </span>
           </div>
 
-          <div className="p-3 rounded-lg bg-stone-50 border border-stone-100">
+          <div className="p-3.5 rounded-xl bg-stone-50/80 border border-stone-200/80 hover:bg-stone-50 transition">
             <span className="font-semibold text-stone-600 block mb-1">3. What products have been sold?</span>
-            <div className="text-base font-bold text-stone-900">
+            <div className="text-base font-bold text-stone-900 font-mono">
               {allTimeSummary.totalItemsSold} Items sold
             </div>
             <span className="text-stone-500 mt-0.5 block">Across {allTimeSummary.totalTransactions} recorded transactions</span>
           </div>
 
-          <div className="p-3 rounded-lg bg-stone-50 border border-stone-100">
+          <div className="p-3.5 rounded-xl bg-stone-50/80 border border-stone-200/80 hover:bg-stone-50 transition">
             <span className="font-semibold text-stone-600 block mb-1">4. How much profit generated?</span>
-            <div className={`text-base font-bold ${getProfitColorClass(allTimeSummary.grossProfit)}`}>
+            <div className={`text-base font-bold font-mono ${getProfitColorClass(allTimeSummary.grossProfit)}`}>
               {formatProfit(allTimeSummary.grossProfit, store.currency)}
             </div>
             <span className="text-stone-500 mt-0.5 block">

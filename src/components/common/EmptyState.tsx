@@ -21,18 +21,18 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   return (
     <div
       id={id}
-      className="p-8 text-center rounded-xl border border-dashed border-stone-300 bg-stone-50/50 flex flex-col items-center justify-center max-w-lg mx-auto"
+      className="p-10 text-center rounded-2xl border border-dashed border-stone-200 bg-stone-50/70 flex flex-col items-center justify-center max-w-lg mx-auto shadow-2xs"
     >
-      <div className="w-12 h-12 rounded-full bg-stone-100 flex items-center justify-center text-stone-500 mb-3">
-        <Icon className="w-6 h-6" />
+      <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-700 mb-3.5 shadow-2xs">
+        <Icon className="w-7 h-7" />
       </div>
-      <h4 className="text-base font-semibold text-stone-800">{title}</h4>
-      <p className="text-sm text-stone-500 mt-1 max-w-sm">{description}</p>
+      <h4 className="text-base font-bold text-stone-900">{title}</h4>
+      <p className="text-xs sm:text-sm text-stone-500 mt-1 max-w-sm leading-relaxed">{description}</p>
       {actionLabel && onAction && (
         <button
           type="button"
           onClick={onAction}
-          className="mt-4 inline-flex items-center px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-xs"
+          className="mt-5 inline-flex items-center px-4 py-2.5 text-xs font-bold rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-xs cursor-pointer active:scale-98"
         >
           {actionLabel}
         </button>

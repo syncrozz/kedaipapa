@@ -6,6 +6,7 @@ import {
   Plus,
   Minus,
   CheckCircle,
+  CheckCircle2,
   Receipt,
   AlertCircle,
   Tag,
@@ -23,6 +24,7 @@ import {
   X,
   Users,
   Barcode,
+  Package,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { Product, CartItem, Sale, Customer } from '../types';
@@ -649,12 +651,35 @@ export const PosPage: React.FC = () => {
         </div>
       )}
 
+      {/* Flow indicator: SEARCH -> SELECT PRODUCT -> ADD TO CART -> CHECKOUT */}
+      <div className="hidden sm:flex items-center justify-between px-4 py-2.5 bg-white border border-emerald-100/80 rounded-2xl text-xs font-semibold text-stone-700 shadow-2xs">
+        <div className="flex items-center gap-2 text-emerald-800">
+          <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold">1</span>
+          <span>Carian & Imbasan</span>
+        </div>
+        <span className="text-stone-300 font-bold">→</span>
+        <div className="flex items-center gap-2 text-emerald-800">
+          <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold">2</span>
+          <span>Pilih Produk</span>
+        </div>
+        <span className="text-stone-300 font-bold">→</span>
+        <div className="flex items-center gap-2 text-emerald-800">
+          <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold">3</span>
+          <span>Troli Aktif</span>
+        </div>
+        <span className="text-stone-300 font-bold">→</span>
+        <div className="flex items-center gap-2 text-emerald-800">
+          <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold">4</span>
+          <span>Selesai & Bayaran</span>
+        </div>
+      </div>
+
       {/* Main Two-Column POS Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* Left Column: Product Selection Grid (7 cols) */}
         <div className="lg:col-span-7 flex flex-col gap-4">
           {/* Search bar & Category chips */}
-          <div className="order-2 lg:order-1 sticky bottom-2 lg:top-2 z-20 bg-white/95 backdrop-blur-md p-4 rounded-xl border-2 border-emerald-500/40 shadow-lg shadow-stone-900/5 space-y-3">
+          <div className="order-2 lg:order-1 sticky bottom-2 lg:top-2 z-20 bg-white/95 backdrop-blur-md p-4 rounded-2xl border-2 border-emerald-500/40 shadow-lg shadow-stone-900/5 space-y-3">
             <div className="flex items-center justify-between">
               <label htmlFor="pos-search-input" className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 tracking-wide uppercase">
                 <Barcode className="w-4 h-4 text-emerald-600" />
@@ -697,7 +722,7 @@ export const PosPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="text-xs font-semibold px-2 py-1 rounded bg-stone-100 text-stone-600 hover:bg-stone-200 transition"
+                    className="text-xs font-semibold px-2 py-1 rounded-lg bg-stone-100 text-stone-600 hover:bg-stone-200 transition"
                   >
                     Clear
                   </button>
@@ -721,13 +746,13 @@ export const PosPage: React.FC = () => {
                     id={buttonId}
                     type="button"
                     onClick={() => setSelectedCategory(cat)}
-                    className={`px-3.5 py-1.5 rounded-lg whitespace-nowrap font-semibold transition text-xs flex items-center gap-1.5 shadow-2xs ${
+                    className={`px-3.5 py-1.5 rounded-xl whitespace-nowrap font-semibold transition text-xs flex items-center gap-1.5 shadow-2xs ${
                       isSelected
                         ? catPastel
-                          ? `bg-stone-900 text-white ring-2 ring-stone-900 shadow-xs`
-                          : 'bg-stone-900 text-white shadow-xs'
+                          ? `bg-emerald-700 text-white ring-2 ring-emerald-600 shadow-xs`
+                          : 'bg-emerald-700 text-white shadow-xs'
                         : catPastel
-                        ? `${catPastel.cardBg} ${catPastel.badgeText} border-2 ${catPastel.badgeBorder} hover:brightness-95 hover:shadow-xs`
+                        ? `${catPastel.cardBg} ${catPastel.badgeText} border ${catPastel.badgeBorder} hover:brightness-95 hover:shadow-xs`
                         : 'bg-stone-100 text-stone-700 border border-stone-200 hover:bg-stone-200'
                     }`}
                   >
@@ -747,7 +772,7 @@ export const PosPage: React.FC = () => {
 
           {/* Product Catalog Cards Grid & Empty States Container */}
           <div className="order-1 lg:order-2 space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
               {filteredProducts.map((product) => {
                 const inStock = product.currentStock > 0;
                 const cartItem = liveCart.find((i) => i.product.id === product.id);
@@ -764,7 +789,7 @@ export const PosPage: React.FC = () => {
                     onClick={() => {
                       if (inStock) addToCart(product);
                     }}
-                    className={`rounded-xl border p-3 flex flex-col justify-between transition text-left select-none relative shadow-2xs ${
+                    className={`rounded-2xl border p-3 sm:p-3.5 flex flex-col justify-between transition text-left select-none relative shadow-2xs ${
                       !inStock
                         ? 'opacity-60 border-stone-200 cursor-not-allowed bg-stone-50'
                         : `${pastel.cardBg} ${pastel.cardBorder} ${pastel.hoverBorder} ${pastel.hoverBg} hover:shadow-xs cursor-pointer active:scale-98`
@@ -772,47 +797,45 @@ export const PosPage: React.FC = () => {
                   >
                     {/* Badge showing quantity in active ticket */}
                     {qtyInCart > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center shadow-xs">
+                      <span className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center shadow-xs z-10 ring-2 ring-white">
                         {qtyInCart}
                       </span>
                     )}
 
                     <div>
-                      {product.imageUrl && (
-                        <div className="w-full h-20 mb-2 rounded-lg overflow-hidden bg-white/80 border border-stone-200/50">
+                      {/* Product Image / Retail Thumbnail */}
+                      <div className="w-full h-24 mb-2.5 rounded-xl overflow-hidden bg-white/90 border border-stone-200/60 relative flex items-center justify-center">
+                        {product.imageUrl ? (
                           <img
                             src={product.imageUrl}
                             alt={product.name}
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover"
                           />
-                        </div>
-                      )}
-
-                      {/* Reference elements kept in DOM for scanning & accessibility, hidden visually to focus on price & stock */}
-                      <div className="hidden items-center justify-between text-[10px] mb-1.5 gap-1" aria-hidden="true">
-                        <span
-                          className="hidden font-mono font-medium text-stone-500 bg-white/80 px-1.5 py-0.5 rounded border border-stone-200/60 shadow-2xs"
-                          data-sku={product.sku}
-                        >
-                          {product.sku}
-                        </span>
-                        <span
-                          className={`hidden truncate max-w-[90px] font-semibold px-1.5 py-0.5 rounded border ${pastel.badgeBg} ${pastel.badgeText} ${pastel.badgeBorder}`}
-                          data-category={product.category}
-                        >
-                          {product.category}
-                        </span>
+                        ) : (
+                          <div className={`w-full h-full flex flex-col items-center justify-center ${pastel.cardBg}`}>
+                            <Package className={`w-7 h-7 ${pastel.badgeText} opacity-40`} />
+                            <span className="text-[9px] text-stone-400 font-medium mt-0.5">Kedai PAPA</span>
+                          </div>
+                        )}
                       </div>
 
-                      <h4 className="text-xs font-semibold text-stone-900 line-clamp-2 leading-snug">
+                      {/* Category & SKU kept accessible in DOM for search/filtering functions */}
+                      <span className="sr-only" data-category={product.category}>
+                        {product.category}
+                      </span>
+                      <span className="sr-only" data-sku={product.sku}>
+                        {product.sku}
+                      </span>
+
+                      <h4 className="text-xs sm:text-sm font-semibold text-stone-900 line-clamp-2 leading-snug min-h-[2rem]">
                         {product.name}
                       </h4>
                     </div>
 
-                    <div className="mt-3 pt-2 border-t border-stone-200/60 flex items-end justify-between">
+                    <div className="mt-2.5 pt-2 border-t border-stone-200/60 flex items-end justify-between gap-1">
                       <div>
-                        <div className="text-sm font-bold font-mono text-stone-900">
+                        <div className="text-sm sm:text-base font-bold font-mono text-stone-900">
                           {store.currency} {product.sellingPrice.toFixed(2)}
                         </div>
                         <div className={`text-[10px] font-semibold ${pastel.profitText}`}>
@@ -820,14 +843,14 @@ export const PosPage: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="text-right">
+                      <div className="text-right shrink-0">
                         {!inStock ? (
-                          <span className="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
                             Habis Stok
                           </span>
                         ) : (
                           <span
-                            className={`text-[10px] font-mono font-medium px-1.5 py-0.5 rounded ${
+                            className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded-md ${
                               isLowStock
                                 ? 'bg-amber-100/90 text-amber-900 border border-amber-300/80 font-bold animate-pulse'
                                 : 'text-stone-700 bg-white border border-stone-200 shadow-2xs'
@@ -844,7 +867,7 @@ export const PosPage: React.FC = () => {
             </div>
 
             {activeProducts.length === 0 ? (
-              <div id="pos-empty-active-state" className="p-12 text-center bg-white rounded-xl border border-stone-200 text-stone-400 text-xs">
+              <div id="pos-empty-active-state" className="p-12 text-center bg-white rounded-2xl border border-stone-200 text-stone-400 text-xs shadow-2xs">
                 <ShoppingBag className="w-8 h-8 mx-auto mb-2 text-stone-300" />
                 <p className="font-semibold text-stone-700 text-sm">No active products available for sale.</p>
                 <p className="text-[11px] text-stone-400 mt-1">
@@ -852,7 +875,7 @@ export const PosPage: React.FC = () => {
                 </p>
               </div>
             ) : filteredProducts.length === 0 ? (
-              <div id="pos-no-match-state" className="p-12 text-center bg-white rounded-xl border border-stone-200 text-stone-400 text-xs">
+              <div id="pos-no-match-state" className="p-12 text-center bg-white rounded-2xl border border-stone-200 text-stone-400 text-xs shadow-2xs">
                 <Search className="w-8 h-8 mx-auto mb-2 text-stone-300" />
                 <p className="font-semibold text-stone-600">No matching products found</p>
                 <p className="text-[11px] text-stone-400 mt-1">Try modifying your search or selecting a different category.</p>
@@ -863,11 +886,13 @@ export const PosPage: React.FC = () => {
 
         {/* Right Column: Active Order Ticket & Checkout (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
-          <div className="bg-white rounded-xl border border-stone-200 shadow-xs flex flex-col">
+          <div className="bg-white rounded-2xl border border-stone-200/90 shadow-2xs flex flex-col overflow-hidden">
             {/* Ticket Header */}
-            <div className="p-4 border-b border-stone-200 flex items-center justify-between bg-stone-50/70 rounded-t-xl">
+            <div className="p-4 border-b border-stone-200/80 flex items-center justify-between bg-stone-50/80">
               <div className="flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-emerald-700" />
+                <div className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200/80 text-emerald-800">
+                  <ShoppingBag className="w-4 h-4 text-emerald-700" />
+                </div>
                 <h3 className="font-bold text-stone-900 text-sm">
                   Active Cart ({liveCart.reduce((a, b) => a + b.quantity, 0)} items)
                 </h3>
@@ -877,7 +902,7 @@ export const PosPage: React.FC = () => {
                   type="button"
                   id="pos-clear-ticket-btn"
                   onClick={clearCart}
-                  className="text-xs font-semibold text-rose-600 hover:text-rose-800 transition"
+                  className="text-xs font-semibold text-rose-600 hover:text-rose-800 transition cursor-pointer"
                 >
                   Clear Ticket
                 </button>
