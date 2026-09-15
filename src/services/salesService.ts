@@ -12,6 +12,7 @@
 
 import { Product, Sale, SaleItem, InventoryMovement, CartItem, PaymentMethod } from '../types';
 import { InventoryService } from './inventoryService';
+import { STORE_OWNER_ID, STORE_OWNER_NAME } from './staffService';
 
 export interface SaleProcessingResult {
   sale: Sale;
@@ -279,8 +280,8 @@ export class SalesService {
       customerId: options?.customerId !== undefined ? options.customerId : null,
       customerIdSnapshot: options?.customerIdSnapshot || options?.customerId || undefined,
       customerNameSnapshot: options?.customerNameSnapshot || undefined,
-      cashierIdSnapshot: options?.cashierIdSnapshot || undefined,
-      cashierNameSnapshot: options?.cashierNameSnapshot || undefined,
+      cashierIdSnapshot: options?.cashierIdSnapshot !== undefined ? options.cashierIdSnapshot : STORE_OWNER_ID,
+      cashierNameSnapshot: options?.cashierNameSnapshot !== undefined ? options.cashierNameSnapshot : STORE_OWNER_NAME,
       pointsEarned: options?.pointsEarned || undefined,
       pointsRedeemed: options?.pointsRedeemed || undefined,
       notes,

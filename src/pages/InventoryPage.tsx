@@ -52,6 +52,7 @@ export const InventoryPage: React.FC = () => {
     recordStockIn,
     recordAdjustment,
     recordReturn,
+    requireAdmin,
   } = useStore();
 
   const [activeTab, setActiveTab] = useState<'levels' | 'movements' | 'count' | 'analysis'>('levels');
@@ -703,11 +704,13 @@ export const InventoryPage: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setActionError(null);
-                                  setAdjustProduct(product);
-                                  setAdjustQty(-1);
-                                  setAdjustReasonCategory('Damaged');
-                                  setAdjustCustomNotes('');
+                                  requireAdmin(() => {
+                                    setActionError(null);
+                                    setAdjustProduct(product);
+                                    setAdjustQty(-1);
+                                    setAdjustReasonCategory('Damaged');
+                                    setAdjustCustomNotes('');
+                                  }, `Pelarasan Stok ${product.name}`);
                                 }}
                                 className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-800 bg-white hover:bg-amber-50 border border-stone-200 rounded-md transition cursor-pointer"
                                 title="Record traceable adjustment with reason"
@@ -720,11 +723,13 @@ export const InventoryPage: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setActionError(null);
-                                  setReturnProduct(product);
-                                  setReturnQty(1);
-                                  setReturnRef('');
-                                  setReturnReason('Customer return - unopened item');
+                                  requireAdmin(() => {
+                                    setActionError(null);
+                                    setReturnProduct(product);
+                                    setReturnQty(1);
+                                    setReturnRef('');
+                                    setReturnReason('Customer return - unopened item');
+                                  }, `Pemulangan Stok ${product.name}`);
                                 }}
                                 className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-stone-700 bg-white hover:bg-stone-50 border border-stone-200 rounded-md transition cursor-pointer"
                                 title="Record return"

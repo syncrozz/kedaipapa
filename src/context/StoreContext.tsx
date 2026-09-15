@@ -249,7 +249,24 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
 
   const [activeStaff, setActiveStaff] = useState<StaffUser | null>(() => {
-    return INITIAL_STAFF.find((s) => s.role === 'CASHIER') || INITIAL_STAFF[0] || null;
+    const savedStaff = StorageService.safeParse<StaffUser[]>(
+      localStorage.getItem(STORAGE_KEYS.STAFF),
+      INITIAL_STAFF,
+      (val) => Array.isArray(val)
+    );
+    const activeCashiers = StaffService.getActiveCashiers(savedStaff);
+    if (activeCashiers.length === 0) {
+      return null;
+    }
+    const savedCashierId = localStorage.getItem(STORAGE_KEYS.ACTIVE_CASHIER_ID);
+    if (savedCashierId === 'store-owner') {
+      return null;
+    }
+    if (savedCashierId) {
+      const match = activeCashiers.find((s) => s.id === savedCashierId);
+      if (match) return match;
+    }
+    return activeCashiers[0] || null;
   });
 
   const [lastCatalogSyncInfo, setLastCatalogSyncInfo] = useState<LastCatalogSyncInfo | null>(() => {
@@ -294,6 +311,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(staffUsers));
   }, [staffUsers]);
+
+  useEffect(() => {
+    if (activeStaff) {
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_CASHIER_ID, activeStaff.id);
+    } else {
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_CASHIER_ID, 'store-owner');
+    }
+  }, [activeStaff]);
+
+  useEffect(() => {
+    if (activeStaff) {
+      const isStillActiveCashier = staffUsers.some(
+        (s) => s.id === activeStaff.id && s.active && s.role === 'CASHIER'
+      );
+      if (!isStillActiveCashier) {
+        const remainingCashiers = StaffService.getActiveCashiers(staffUsers);
+        setActiveStaff(remainingCashiers[0] || null);
+      }
+    }
+  }, [staffUsers, activeStaff]);
 
   // Multi-Device Cloud Sync State & Real-time Integration
   const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>('SYNCING');
@@ -1434,9 +1471,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateStaff = (id: string, updates: UpdateStaffInput): StaffUser => {
     const updated = StaffService.updateStaff(id, updates, staffUsers);
-    setStaffUsers((prev) => prev.map((s) => (s.id === id ? updated : s)));
+    const newStaffList = staffUsers.map((s) => (s.id === id ? updated : s));
+    setStaffUsers(newStaffList);
     if (activeStaff && activeStaff.id === id) {
-      setActiveStaff(updated);
+      if (!updated.active || updated.role !== 'CASHIER') {
+        const remainingCashiers = StaffService.getActiveCashiers(newStaffList);
+        setActiveStaff(remainingCashiers[0] || null);
+      } else {
+        setActiveStaff(updated);
+      }
     }
     FirebaseService.syncStaffUser(updated);
     return updated;
@@ -1575,7 +1618,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setCustomers(INITIAL_CUSTOMERS);
     setLoyaltyLedger(INITIAL_LOYALTY_LEDGER);
     setStaffUsers(INITIAL_STAFF);
-    setActiveStaff(INITIAL_STAFF.find((s) => s.role === 'CASHIER') || INITIAL_STAFF[0] || null);
+    setActiveStaff(StaffService.getActiveCashiers(INITIAL_STAFF)[0] || null);
     localStorage.removeItem(STORAGE_KEYS.STORE);
     localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
     localStorage.removeItem(STORAGE_KEYS.MOVEMENTS);
@@ -1585,6 +1628,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.removeItem(STORAGE_KEYS.CUSTOMERS);
     localStorage.removeItem(STORAGE_KEYS.LOYALTY);
     localStorage.removeItem(STORAGE_KEYS.STAFF);
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_CASHIER_ID);
   };
 
   const exportStoreData = (): StoreBackupPayload => {
@@ -1622,7 +1666,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setCustomers(data.customers);
     setLoyaltyLedger(data.loyaltyLedger);
     setStaffUsers(data.staffUsers);
-    setActiveStaff(data.staffUsers.find((s) => s.role === 'CASHIER') || data.staffUsers[0] || null);
+    setActiveStaff(StaffService.getActiveCashiers(data.staffUsers)[0] || null);
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_CASHIER_ID);
 
     FirebaseService.syncAllData({
       store: data.store,

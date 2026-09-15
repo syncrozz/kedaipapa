@@ -31,6 +31,9 @@ import { Modal } from '../components/common/Modal';
 import { CustomerService } from '../services/customerService';
 import { LoyaltyService } from '../services/loyaltyService';
 import { SalesService } from '../services/salesService';
+import { InventoryService } from '../services/inventoryService';
+import { StaffService, STORE_OWNER_ID, STORE_OWNER_NAME } from '../services/staffService';
+import { STORAGE_KEYS } from '../services/storageService';
 
 interface CategoryPastelTheme {
   cardBg: string;
@@ -248,6 +251,32 @@ export const PosPage: React.FC = () => {
   const [viewHistorySale, setViewHistorySale] = useState<Sale | null>(null);
   const [showRecentSalesModal, setShowRecentSalesModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Active cashiers resolution: only staff with active === true and role === 'CASHIER'
+  const activeCashiers = useMemo(() => {
+    return StaffService.getActiveCashiers(staffUsers);
+  }, [staffUsers]);
+
+  // Determine currently active cashier with Store Owner fallback
+  const currentCashier = useMemo(() => {
+    if (store.settings?.enableStaff === false || activeCashiers.length === 0) {
+      return null;
+    }
+    if (activeStaff && activeCashiers.some((c) => c.id === activeStaff.id)) {
+      return activeStaff;
+    }
+    const savedCashierId = localStorage.getItem(STORAGE_KEYS.ACTIVE_CASHIER_ID);
+    if (savedCashierId === 'store-owner') {
+      return null;
+    }
+    if (savedCashierId) {
+      const match = activeCashiers.find((c) => c.id === savedCashierId);
+      if (match) return match;
+    }
+    return activeCashiers[0] || null;
+  }, [store.settings?.enableStaff, activeCashiers, activeStaff]);
+
+  const selectedCashierValue = currentCashier ? currentCashier.id : 'store-owner';
 
   // POS Core Rule: Catalog must only display active products (Product.active === true)
   const activeProducts = useMemo(() => {
@@ -477,6 +506,8 @@ export const PosPage: React.FC = () => {
     setIsProcessing(true);
 
     try {
+      const cashierSnapshot = StaffService.getCashierSnapshot(currentCashier);
+
       const sale = processSale(
         liveCart,
         {
@@ -487,8 +518,8 @@ export const PosPage: React.FC = () => {
           customerId: selectedCustomer ? selectedCustomer.id : null,
           customerIdSnapshot: selectedCustomer ? selectedCustomer.id : undefined,
           customerNameSnapshot: selectedCustomer ? selectedCustomer.customerName : undefined,
-          cashierIdSnapshot: activeStaff ? activeStaff.id : undefined,
-          cashierNameSnapshot: activeStaff ? activeStaff.name : undefined,
+          cashierIdSnapshot: cashierSnapshot.cashierIdSnapshot,
+          cashierNameSnapshot: cashierSnapshot.cashierNameSnapshot,
         }
       );
 
@@ -535,25 +566,49 @@ export const PosPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          {store.settings?.enableStaff !== false && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs text-stone-700 shadow-2xs">
+          {store.settings?.enableStaff !== false && activeCashiers.length > 0 ? (
+            <div
+              id="pos-cashier-container"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs text-stone-700 shadow-2xs"
+            >
               <UserCheck className="w-3.5 h-3.5 text-emerald-700" />
               <span className="text-stone-500">Cashier:</span>
               <select
                 id="pos-cashier-select"
-                value={activeStaff?.id || ''}
+                value={selectedCashierValue}
                 onChange={(e) => {
-                  const s = staffUsers.find((user) => user.id === e.target.value);
-                  if (s) setActiveStaff(s);
+                  const val = e.target.value;
+                  if (val === 'store-owner' || !val) {
+                    setActiveStaff(null);
+                    localStorage.setItem(STORAGE_KEYS.ACTIVE_CASHIER_ID, 'store-owner');
+                  } else {
+                    const found = activeCashiers.find((s) => s.id === val);
+                    if (found) {
+                      setActiveStaff(found);
+                      localStorage.setItem(STORAGE_KEYS.ACTIVE_CASHIER_ID, found.id);
+                    }
+                  }
                 }}
                 className="bg-transparent font-semibold text-stone-900 border-none focus:outline-none cursor-pointer"
               >
-                {staffUsers.filter((s) => s.active).map((s) => (
+                {activeCashiers.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} ({s.staffCode})
+                    {s.name} ({s.staffCode || s.userCode})
                   </option>
                 ))}
+                <option value="store-owner">Store Owner</option>
               </select>
+            </div>
+          ) : (
+            <div
+              id="pos-cashier-container"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs text-stone-700 shadow-2xs"
+            >
+              <UserCheck className="w-3.5 h-3.5 text-emerald-700" />
+              <span className="text-stone-500">Cashier:</span>
+              <span id="pos-cashier-label" className="font-semibold text-stone-900">
+                Store Owner
+              </span>
             </div>
           )}
 
@@ -697,7 +752,7 @@ export const PosPage: React.FC = () => {
                 const inStock = product.currentStock > 0;
                 const cartItem = liveCart.find((i) => i.product.id === product.id);
                 const qtyInCart = cartItem ? cartItem.quantity : 0;
-                const isLowStock = product.currentStock <= product.minimumStock && inStock;
+                const isLowStock = InventoryService.isLowStock(product);
                 const unitProfit = Number((product.sellingPrice - product.costPrice).toFixed(2));
                 const pastel = getCategoryPastelTheme(product.category);
 
@@ -705,6 +760,7 @@ export const PosPage: React.FC = () => {
                   <div
                     key={product.id}
                     id={`product-card-${product.id}`}
+                    title={`${product.name} (SKU: ${product.sku} | ${product.category})`}
                     onClick={() => {
                       if (inStock) addToCart(product);
                     }}
@@ -733,11 +789,18 @@ export const PosPage: React.FC = () => {
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between text-[10px] mb-1.5 gap-1">
-                        <span className="font-mono font-medium text-stone-500 bg-white/80 px-1.5 py-0.5 rounded border border-stone-200/60 shadow-2xs">
+                      {/* Reference elements kept in DOM for scanning & accessibility, hidden visually to focus on price & stock */}
+                      <div className="hidden items-center justify-between text-[10px] mb-1.5 gap-1" aria-hidden="true">
+                        <span
+                          className="hidden font-mono font-medium text-stone-500 bg-white/80 px-1.5 py-0.5 rounded border border-stone-200/60 shadow-2xs"
+                          data-sku={product.sku}
+                        >
                           {product.sku}
                         </span>
-                        <span className={`truncate max-w-[90px] font-semibold px-1.5 py-0.5 rounded border ${pastel.badgeBg} ${pastel.badgeText} ${pastel.badgeBorder}`}>
+                        <span
+                          className={`hidden truncate max-w-[90px] font-semibold px-1.5 py-0.5 rounded border ${pastel.badgeBg} ${pastel.badgeText} ${pastel.badgeBorder}`}
+                          data-category={product.category}
+                        >
                           {product.category}
                         </span>
                       </div>
@@ -767,7 +830,7 @@ export const PosPage: React.FC = () => {
                             className={`text-[10px] font-mono font-medium px-1.5 py-0.5 rounded ${
                               isLowStock
                                 ? 'bg-amber-100/90 text-amber-900 border border-amber-300/80 font-bold animate-pulse'
-                                : 'text-stone-600 bg-white/80 border border-stone-200/60'
+                                : 'text-stone-700 bg-white border border-stone-200 shadow-2xs'
                             }`}
                           >
                             {product.currentStock} baki

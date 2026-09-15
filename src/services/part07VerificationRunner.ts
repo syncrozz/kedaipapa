@@ -47,6 +47,9 @@ export class Part07VerificationRunner {
     // Test 6: System Operates Reliably When Modules Disabled (Decoupling)
     results.push(this.testModuleDecoupling());
 
+    // Test 7: Store Owner Default POS Cashier & Attribution Fallback
+    results.push(this.testDefaultStoreOwnerCashierFallback());
+
     return results;
   }
 
@@ -394,6 +397,80 @@ export class Part07VerificationRunner {
         category: 'REGRESSION',
         name: 'Modular Decoupling & Optionality Guarantee',
         description: 'Confirms core POS operations function without optional modules.',
+        status: 'FAILED',
+        details: `Exception: ${err.message}`,
+        executionTimeMs: performance.now() - start,
+      };
+    }
+  }
+
+  private static testDefaultStoreOwnerCashierFallback(): Part07TestResult {
+    const start = performance.now();
+    try {
+      // Scenario 1: No CASHIER staff exists -> Fallback to "Store Owner"
+      const emptyStaffCashiers = StaffService.getActiveCashiers([]);
+      const snap1 = StaffService.getCashierSnapshot(null);
+
+      // Scenario 2: OWNER exists (Pak Samad) but no CASHIER exists -> Display label remains "Store Owner"
+      const ownerStaff: StaffUser = {
+        id: 'stf-001',
+        userCode: 'STF-001',
+        name: 'Pak Samad',
+        role: 'OWNER',
+        active: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const ownerOnlyCashiers = StaffService.getActiveCashiers([ownerStaff]);
+      const snap2 = StaffService.getCashierSnapshot(null);
+
+      // Scenario 3: Active CASHIER exists (Mama Lini)
+      const mamaLini: StaffUser = {
+        id: 'stf-002',
+        userCode: 'STF-002',
+        name: 'Mama Lini',
+        role: 'CASHIER',
+        active: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const cashierList = StaffService.getActiveCashiers([ownerStaff, mamaLini]);
+      const snap3 = StaffService.getCashierSnapshot(mamaLini);
+
+      // Scenario 4: CASHIER is deactivated -> Fallback to Store Owner
+      const deactivatedMamaLini: StaffUser = { ...mamaLini, active: false };
+      const deactivatedCashiers = StaffService.getActiveCashiers([ownerStaff, deactivatedMamaLini]);
+      const snap4 = StaffService.getCashierSnapshot(deactivatedMamaLini);
+
+      const passed =
+        emptyStaffCashiers.length === 0 &&
+        snap1.cashierNameSnapshot === 'Store Owner' &&
+        snap1.cashierIdSnapshot === 'store-owner' &&
+        ownerOnlyCashiers.length === 0 &&
+        snap2.cashierNameSnapshot === 'Store Owner' &&
+        cashierList.length === 1 &&
+        cashierList[0].name === 'Mama Lini' &&
+        snap3.cashierNameSnapshot === 'Mama Lini' &&
+        snap3.cashierIdSnapshot === 'stf-002' &&
+        deactivatedCashiers.length === 0 &&
+        snap4.cashierNameSnapshot === 'Store Owner' &&
+        snap4.cashierIdSnapshot === 'store-owner';
+
+      return {
+        id: 'P07-07',
+        category: 'STAFF',
+        name: 'Store Owner Default POS Cashier & Attribution Fallback',
+        description: 'Enforces Store Owner as automatic default POS operator when no active CASHIER exists, and attributes cashierNameSnapshot correctly.',
+        status: passed ? 'PASSED' : 'FAILED',
+        details: `No cashier: "${snap1.cashierNameSnapshot}". Owner-only: "${snap2.cashierNameSnapshot}". Active cashier: "${snap3.cashierNameSnapshot}". Deactivated cashier fallback: "${snap4.cashierNameSnapshot}".`,
+        executionTimeMs: performance.now() - start,
+      };
+    } catch (err: any) {
+      return {
+        id: 'P07-07',
+        category: 'STAFF',
+        name: 'Store Owner Default POS Cashier & Attribution Fallback',
+        description: 'Enforces Store Owner as automatic default POS operator when no active CASHIER exists.',
         status: 'FAILED',
         details: `Exception: ${err.message}`,
         executionTimeMs: performance.now() - start,

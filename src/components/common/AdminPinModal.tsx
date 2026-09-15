@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, Lock, AlertCircle, X } from 'lucide-react';
+import { Lock, AlertCircle, X, KeyRound } from 'lucide-react';
 import { AdminAuthService } from '../../services/adminAuthService';
 
 interface AdminPinModalProps {
@@ -33,21 +33,6 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({
     }
   }, [isOpen]);
 
-  // Escape key handler
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    if (isOpen) {
-      window.addEventListener('keydown', handleKeyDown);
-    }
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen, onClose]);
-
   const handleValidate = (candidatePin: string) => {
     if (isVerifying) return;
     setIsVerifying(true);
@@ -64,7 +49,6 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({
       setErrorMessage(result.error || 'PIN salah. Sila cuba lagi.');
       setPin('');
       setIsVerifying(false);
-      // Re-focus the input
       setTimeout(() => {
         inputRef.current?.focus();
       }, 50);
@@ -73,21 +57,28 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    // Allow only digits, max 4 digits
+    // Strictly numeric only, max 4 digits
     const digitsOnly = val.replace(/\D/g, '').slice(0, 4);
     setPin(digitsOnly);
     setErrorMessage(null);
 
-    // Digit 4 -> automatically validate
+    // Auto-submit immediately when 4th digit is entered
     if (digitsOnly.length === 4) {
       handleValidate(digitsOnly);
     }
   };
 
-  const handleKeyDownInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
       e.preventDefault();
-      handleValidate(pin);
+      onClose();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (pin.length === 4) {
+        handleValidate(pin);
+      } else if (pin.length > 0 && pin.length < 4) {
+        setErrorMessage('Sila masukkan 4-digit PIN keselamatan.');
+      }
     }
   };
 
@@ -99,32 +90,37 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({
     <div
       id="admin-pin-modal-backdrop"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs select-none"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl border border-stone-200 w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="bg-white rounded-2xl shadow-2xl border border-stone-200 w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         role="dialog"
         aria-modal="true"
         aria-labelledby="admin-pin-modal-title"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-stone-100 bg-stone-50">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-orange-100 text-orange-700 flex items-center justify-center">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 bg-stone-50/80">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-amber-100/90 text-amber-800 border border-amber-200 flex items-center justify-center shadow-2xs">
               <Lock className="w-4 h-4" />
             </div>
             <div>
-              <h3 id="admin-pin-modal-title" className="text-sm font-bold text-stone-900">
-                Akses Mod Admin
+              <h3 id="admin-pin-modal-title" className="text-sm font-bold text-stone-900 flex items-center gap-1.5">
+                <span>🔒 Akses Mod Admin</span>
               </h3>
-              {actionDescription && (
+              {actionDescription ? (
                 <p className="text-[11px] text-stone-500 line-clamp-1">{actionDescription}</p>
+              ) : (
+                <p className="text-[11px] text-stone-500">Kebenaran Pentadbir Diperlukan</p>
               )}
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-stone-400 hover:text-stone-700 p-1 rounded-md hover:bg-stone-200/60 transition cursor-pointer"
+            className="text-stone-400 hover:text-stone-700 p-1.5 rounded-lg hover:bg-stone-200/60 transition cursor-pointer"
             aria-label="Tutup"
           >
             <X className="w-4 h-4" />
@@ -132,82 +128,75 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="p-5">
-          <p className="text-xs text-stone-600 mb-4 text-center">
-            Sila masukkan 4-digit PIN keselamatan untuk membuka kebenaran pentadbir Kedai PAPA.
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (pin.length === 4) handleValidate(pin);
+          }}
+          className="p-5 space-y-4"
+        >
+          <p className="text-xs text-stone-600 text-center italic">
+            Sila masukkan 4-digit PIN keselamatan.
           </p>
 
-          <div className="space-y-3">
-            <div>
-              <input
-                ref={inputRef}
-                id="admin-pin-input"
-                type="password"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={4}
-                value={pin}
-                disabled={lockout.locked}
-                onChange={handleInputChange}
-                onKeyDown={handleKeyDownInput}
-                placeholder="••••"
-                className="w-full text-center text-xs font-mono tracking-[0.8em] px-4 py-2.5 rounded-lg border border-stone-300 placeholder:text-stone-300 placeholder:tracking-[0.8em] focus:outline-hidden focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition disabled:bg-stone-100 disabled:text-stone-400 text-stone-800"
-                autoComplete="off"
-              />
-              {/* Visual Symbol Indicators */}
-              <div className="flex justify-center items-center gap-2.5 mt-2.5" aria-hidden="true">
-                {[0, 1, 2, 3].map((i) => (
-                  <span
-                    key={i}
-                    className={`inline-block w-2.5 h-2.5 rounded-full transition-all duration-150 ${
-                      i < pin.length
-                        ? 'bg-orange-600 scale-110'
-                        : 'bg-stone-200'
-                    }`}
-                  />
-                ))}
-              </div>
+          {/* Error Message */}
+          {errorMessage && (
+            <div
+              id="admin-pin-error-alert"
+              className="flex items-center gap-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs animate-in fade-in"
+            >
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+              <span className="font-medium">{errorMessage}</span>
             </div>
+          )}
 
-            {/* Error Message */}
-            {errorMessage && (
-              <div
-                id="admin-pin-error-alert"
-                className="flex items-center gap-1.5 p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs"
-              >
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-                <span>{errorMessage}</span>
-              </div>
-            )}
-
-            {lockout.locked && (
-              <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs text-center font-medium">
-                Sistem dikunci sementara. Sila tunggu {lockout.remainingSeconds} saat.
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-1/2 py-2 text-xs font-semibold rounded-lg border border-stone-300 text-stone-700 hover:bg-stone-50 transition cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                id="admin-pin-submit-btn"
-                disabled={lockout.locked || pin.length === 0}
-                onClick={() => handleValidate(pin)}
-                className="w-1/2 py-2 text-xs font-semibold rounded-lg bg-orange-600 hover:bg-orange-700 text-white transition disabled:opacity-50 disabled:cursor-not-allowed shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Sahkan PIN</span>
-              </button>
+          {/* Lockout alert */}
+          {lockout.locked && (
+            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs text-center font-medium">
+              Sistem dikunci sementara. Sila tunggu {lockout.remainingSeconds} saat.
             </div>
+          )}
+
+          {/* Single 4-digit PIN Password Input */}
+          <div className="relative">
+            <input
+              ref={inputRef}
+              id="admin-pin-input"
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={4}
+              value={pin}
+              disabled={lockout.locked || isVerifying}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Masukkan 4-digit PIN"
+              autoFocus
+              autoComplete="off"
+              className="w-full text-center text-lg tracking-[0.6em] font-mono px-4 py-3 rounded-xl border-2 border-stone-200 focus:border-stone-900 focus:outline-hidden focus:ring-4 focus:ring-stone-100 transition placeholder:tracking-normal placeholder:font-sans placeholder:text-sm placeholder:text-stone-400 text-stone-900 bg-stone-50/50 focus:bg-white disabled:bg-stone-100 disabled:text-stone-400 shadow-2xs"
+            />
           </div>
-        </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-1/3 py-2.5 text-xs font-semibold rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-100 hover:border-stone-300 transition active:scale-98 cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              id="admin-pin-submit-btn"
+              disabled={lockout.locked || pin.length !== 4 || isVerifying}
+              className="w-2/3 py-2.5 text-xs font-semibold rounded-xl bg-stone-900 hover:bg-stone-800 active:scale-98 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+              <span>🔑 Sahkan PIN Admin</span>
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

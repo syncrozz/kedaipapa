@@ -66,10 +66,10 @@ export const AppShell: React.FC<AppShellProps> = ({
   };
 
   const navItems: { id: ActivePage; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    { id: 'pos', label: 'POS', icon: ShoppingCart },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'products', label: 'Products', icon: Package },
     { id: 'inventory', label: 'Inventory', icon: Boxes },
-    { id: 'pos', label: 'POS', icon: ShoppingCart },
     { id: 'purchases', label: 'Purchases', icon: Truck },
     { id: 'suppliers', label: 'Suppliers', icon: Building2 },
     { id: 'customers', label: 'Customers', icon: Users },
@@ -189,7 +189,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
             {/* Action Buttons: Admin Mode + Open POS (Reflows to clean sub-row on Mobile, In-line on Desktop) */}
             <div className="w-full sm:w-auto flex items-center gap-2 pt-1 sm:pt-0 border-t border-stone-100 sm:border-0 shrink-0">
-              {/* Admin Mode Toggle Button (SES 4.4 Locked Part A: Default Orange [ Admin ], Active Green [ Admin Mode Aktif ]) */}
+              {/* Admin Mode Toggle Button */}
               <button
                 type="button"
                 id="header-admin-mode-btn"
@@ -200,15 +200,24 @@ export const AppShell: React.FC<AppShellProps> = ({
                     openPinModal();
                   }
                 }}
-                className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition shadow-2xs cursor-pointer ${
+                className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition shadow-2xs cursor-pointer ${
                   isAdminMode
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    : 'bg-orange-600 hover:bg-orange-700 text-white'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-1 ring-emerald-400/30'
+                    : 'bg-stone-800 hover:bg-stone-900 text-white'
                 }`}
-                title={isAdminMode ? 'Klik untuk keluar dari Mod Admin' : 'Klik untuk buka Mod Admin'}
+                title={isAdminMode ? 'Admin Mode Aktif. Klik untuk keluar dari Mod Admin' : 'Akses Mod Admin'}
               >
-                {isAdminMode ? <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
-                <span className="whitespace-nowrap">{isAdminMode ? 'Admin Mode Aktif' : 'Admin'}</span>
+                {isAdminMode ? (
+                  <>
+                    <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-100" />
+                    <span className="whitespace-nowrap">🟢 Admin Mode Aktif</span>
+                  </>
+                ) : (
+                  <>
+                    <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+                    <span className="whitespace-nowrap">Akses Mod Admin</span>
+                  </>
+                )}
               </button>
 
               {/* Role pill showing Admin / Store Owner */}
@@ -278,11 +287,20 @@ export const AppShell: React.FC<AppShellProps> = ({
                   }
                 }}
                 className={`w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold text-white shadow-2xs ${
-                  isAdminMode ? 'bg-emerald-600' : 'bg-orange-600'
+                  isAdminMode ? 'bg-emerald-600' : 'bg-stone-900'
                 }`}
               >
-                {isAdminMode ? <ShieldCheck className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
-                <span>{isAdminMode ? 'Admin Mode Aktif (Klik untuk Keluar)' : 'Akses Mod Admin'}</span>
+                {isAdminMode ? (
+                  <>
+                    <ShieldCheck className="w-4 h-4 text-emerald-100" />
+                    <span>🟢 Admin Mode Aktif (Klik untuk Keluar)</span>
+                  </>
+                ) : (
+                  <>
+                    <Shield className="w-4 h-4 text-amber-400" />
+                    <span>Akses Mod Admin</span>
+                  </>
+                )}
               </button>
             </div>
             {navItems.map((item) => {

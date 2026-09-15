@@ -37,6 +37,7 @@ export const STORAGE_KEYS = {
   CUSTOMERS: 'kedai_papa_customers_v1',
   LOYALTY: 'kedai_papa_loyalty_v1',
   STAFF: 'kedai_papa_staff_v1',
+  ACTIVE_CASHIER_ID: 'kedai_papa_active_cashier_id_v1',
   PRE_SYNC_BACKUP: 'kedai_papa_pre_sync_backup_v1',
   LAST_SYNC_METADATA: 'kedai_papa_last_sync_metadata_v1',
 } as const;

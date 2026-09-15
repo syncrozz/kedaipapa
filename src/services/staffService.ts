@@ -10,6 +10,9 @@
 
 import { StaffUser, StaffRole } from '../types';
 
+export const STORE_OWNER_ID = 'store-owner';
+export const STORE_OWNER_NAME = 'Store Owner';
+
 export const VALID_STAFF_ROLES: StaffRole[] = [
   'OWNER',
   'MANAGER',
@@ -172,5 +175,34 @@ export class StaffService {
 
   public static getActiveStaffMembers(staff: StaffUser[]): StaffUser[] {
     return this.getActiveStaff(staff);
+  }
+
+  /**
+   * Returns active staff members with CASHIER role who can operate the POS register.
+   */
+  public static getActiveCashiers(staff: StaffUser[]): StaffUser[] {
+    if (!Array.isArray(staff)) return [];
+    return staff.filter((s) => s && s.active && s.role === 'CASHIER');
+  }
+
+  /**
+   * Resolves the current cashier name snapshot for POS transactions.
+   * If a valid active cashier staff is provided, uses their name.
+   * Otherwise falls back strictly to "Store Owner".
+   */
+  public static getCashierSnapshot(staffUser?: StaffUser | null): {
+    cashierIdSnapshot: string;
+    cashierNameSnapshot: string;
+  } {
+    if (staffUser && staffUser.active && staffUser.role === 'CASHIER') {
+      return {
+        cashierIdSnapshot: staffUser.id,
+        cashierNameSnapshot: staffUser.name,
+      };
+    }
+    return {
+      cashierIdSnapshot: STORE_OWNER_ID,
+      cashierNameSnapshot: STORE_OWNER_NAME,
+    };
   }
 }

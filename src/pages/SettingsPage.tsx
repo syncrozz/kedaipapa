@@ -54,6 +54,8 @@ export const SettingsPage: React.FC = () => {
     lastCloudSync,
     syncAllToCloud,
     pullAllFromCloud,
+    isAdminMode,
+    requireAdmin,
   } = useStore();
 
   // Cloud Sync Feedback
@@ -149,32 +151,36 @@ export const SettingsPage: React.FC = () => {
 
   const handleSaveStore = (e: React.FormEvent) => {
     e.preventDefault();
-    updateStoreDetails({
-      name: storeName.trim(),
-      code: storeCode.trim(),
-      currency: currency.trim(),
-      address: address.trim(),
-      phone: phone.trim(),
-      tagline: tagline.trim(),
-      receiptFooter: receiptFooter.trim(),
-    });
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    requireAdmin(() => {
+      updateStoreDetails({
+        name: storeName.trim(),
+        code: storeCode.trim(),
+        currency: currency.trim(),
+        address: address.trim(),
+        phone: phone.trim(),
+        tagline: tagline.trim(),
+        receiptFooter: receiptFooter.trim(),
+      });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    }, 'Kemaskini Maklumat Kedai');
   };
 
   const handleSaveModules = (e: React.FormEvent) => {
     e.preventDefault();
-    updateStoreDetails({
-      settings: {
-        ...store.settings,
-        enableCustomers,
-        enableLoyalty,
-        loyaltyPointsPerCurrency: Math.max(1, loyaltyPointsPerCurrency),
-        enableStaff,
-      },
-    });
-    setModuleSettingsSuccess(true);
-    setTimeout(() => setModuleSettingsSuccess(false), 3000);
+    requireAdmin(() => {
+      updateStoreDetails({
+        settings: {
+          ...store.settings,
+          enableCustomers,
+          enableLoyalty,
+          loyaltyPointsPerCurrency: Math.max(1, loyaltyPointsPerCurrency),
+          enableStaff,
+        },
+      });
+      setModuleSettingsSuccess(true);
+      setTimeout(() => setModuleSettingsSuccess(false), 3000);
+    }, 'Ubah Tetapan Modul');
   };
 
   const handleDownloadBackup = () => {
@@ -227,20 +233,22 @@ export const SettingsPage: React.FC = () => {
 
   const handleConfirmRestore = () => {
     if (!restoreConfirmPayload) return;
-    const result = restoreStoreData(restoreConfirmPayload);
-    if (result.success) {
-      setBackupMessage({
-        type: 'success',
-        text: `Store successfully restored from backup (${restoreConfirmPayload.products.length} products, ${restoreConfirmPayload.sales.length} sales restored).`,
-      });
-      setRestoreConfirmPayload(null);
-      setTimeout(() => setBackupMessage(null), 6000);
-    } else {
-      setBackupMessage({
-        type: 'error',
-        text: `Restore error: ${result.message}`,
-      });
-    }
+    requireAdmin(() => {
+      const result = restoreStoreData(restoreConfirmPayload);
+      if (result.success) {
+        setBackupMessage({
+          type: 'success',
+          text: `Store successfully restored from backup (${restoreConfirmPayload.products.length} products, ${restoreConfirmPayload.sales.length} sales restored).`,
+        });
+        setRestoreConfirmPayload(null);
+        setTimeout(() => setBackupMessage(null), 6000);
+      } else {
+        setBackupMessage({
+          type: 'error',
+          text: `Restore error: ${result.message}`,
+        });
+      }
+    }, 'Pulihkan Data Kedai');
   };
 
   const handleConfirmReset = () => {
@@ -254,23 +262,27 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleOpenAddStaff = () => {
-    setStaffFormCode(StaffService.generateNextStaffCode(staffUsers));
-    setStaffFormName('');
-    setStaffFormRole('CASHIER');
-    setStaffFormActive(true);
-    setStaffFormError(null);
-    setEditingStaff(null);
-    setIsStaffModalOpen(true);
+    requireAdmin(() => {
+      setStaffFormCode(StaffService.generateNextStaffCode(staffUsers));
+      setStaffFormName('');
+      setStaffFormRole('CASHIER');
+      setStaffFormActive(true);
+      setStaffFormError(null);
+      setEditingStaff(null);
+      setIsStaffModalOpen(true);
+    }, 'Daftar Staf Baru');
   };
 
   const handleOpenEditStaff = (staff: StaffUser) => {
-    setEditingStaff(staff);
-    setStaffFormCode(staff.staffCode);
-    setStaffFormName(staff.name);
-    setStaffFormRole(staff.role);
-    setStaffFormActive(staff.active);
-    setStaffFormError(null);
-    setIsStaffModalOpen(true);
+    requireAdmin(() => {
+      setEditingStaff(staff);
+      setStaffFormCode(staff.staffCode);
+      setStaffFormName(staff.name);
+      setStaffFormRole(staff.role);
+      setStaffFormActive(staff.active);
+      setStaffFormError(null);
+      setIsStaffModalOpen(true);
+    }, `Kemaskini Maklumat Staf ${staff.name}`);
   };
 
   const handleSaveStaff = (e: React.FormEvent) => {
@@ -606,7 +618,7 @@ export const SettingsPage: React.FC = () => {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => toggleStaffActive(staff.id)}
+                  onClick={() => requireAdmin(() => toggleStaffActive(staff.id), `Tukar Status Staf ${staff.name}`)}
                   className={`px-2 py-0.5 rounded text-[10px] font-semibold transition ${
                     staff.active
                       ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
@@ -618,7 +630,7 @@ export const SettingsPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => handleOpenEditStaff(staff)}
-                  className="p-1.5 text-stone-400 hover:text-stone-700 rounded hover:bg-stone-100"
+                  className="p-1.5 text-stone-400 hover:text-stone-700 rounded hover:bg-stone-100 cursor-pointer"
                   title="Edit staff details"
                 >
                   <Edit2 className="w-3.5 h-3.5" />
@@ -956,7 +968,7 @@ export const SettingsPage: React.FC = () => {
 
         <button
           type="button"
-          onClick={() => setIsResetModalOpen(true)}
+          onClick={() => requireAdmin(() => setIsResetModalOpen(true), 'Reset Data Kedai') }
           className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-stone-100 text-stone-800 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 border border-stone-200 transition cursor-pointer"
         >
           <RotateCcw className="w-3.5 h-3.5" />
