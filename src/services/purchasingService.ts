@@ -568,7 +568,7 @@ export class PurchasingService {
       search?: string;
     }
   ): Purchase[] {
-    return purchases.filter((p) => {
+    const filtered = purchases.filter((p) => {
       // Date filter
       if (filters.startDate) {
         const pDate = new Date(p.purchaseDate).getTime();
@@ -608,6 +608,28 @@ export class PurchasingService {
       }
 
       return true;
+    });
+
+    // Sort descending: newest purchases first (by purchaseDate/createdAt, then sequence number)
+    return filtered.sort((a, b) => {
+      const dateA = new Date(a.purchaseDate || a.createdAt || '').getTime();
+      const dateB = new Date(b.purchaseDate || b.createdAt || '').getTime();
+      const validA = !isNaN(dateA);
+      const validB = !isNaN(dateB);
+
+      if (validA && validB && dateB !== dateA) {
+        return dateB - dateA;
+      }
+      if (validB && !validA) return 1;
+      if (validA && !validB) return -1;
+
+      const numA = parseInt(a.purchaseNumber?.replace(/\D/g, '') || '0', 10);
+      const numB = parseInt(b.purchaseNumber?.replace(/\D/g, '') || '0', 10);
+      if (numB !== numA) {
+        return numB - numA;
+      }
+
+      return (b.purchaseNumber || '').localeCompare(a.purchaseNumber || '');
     });
   }
 }

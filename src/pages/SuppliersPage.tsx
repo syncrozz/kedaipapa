@@ -738,9 +738,18 @@ export const SuppliersPage: React.FC = () => {
                   selectedSupplierForDetail.id,
                   purchases
                 );
-                const supplierPurchases = purchases.filter(
-                  (p) => p.supplierId === selectedSupplierForDetail.id
-                );
+                const supplierPurchases = purchases
+                  .filter((p) => p.supplierId === selectedSupplierForDetail.id)
+                  .sort((a, b) => {
+                    const dateA = new Date(a.purchaseDate || a.createdAt || '').getTime();
+                    const dateB = new Date(b.purchaseDate || b.createdAt || '').getTime();
+                    if (!isNaN(dateA) && !isNaN(dateB) && dateB !== dateA) {
+                      return dateB - dateA;
+                    }
+                    const numA = parseInt(a.purchaseNumber?.replace(/\D/g, '') || '0', 10);
+                    const numB = parseInt(b.purchaseNumber?.replace(/\D/g, '') || '0', 10);
+                    return numB - numA;
+                  });
 
                 return (
                   <div className="space-y-4">

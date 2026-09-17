@@ -108,8 +108,8 @@ interface StoreContextType {
   deleteSupplier: (id: string) => { success: boolean; message: string };
   isSupplierCodeAvailable: (code: string, excludeId?: string) => boolean;
   createPurchase: (input: CreatePurchaseInput) => Purchase;
-  completePurchase: (purchaseId: string) => CompletePurchaseResult;
-  cancelPurchase: (purchaseId: string) => Purchase;
+  completePurchase: (purchaseOrId: string | Purchase) => CompletePurchaseResult;
+  cancelPurchase: (purchaseOrId: string | Purchase) => Purchase;
   // Customer & Loyalty Domain Operations (Part 07)
   addCustomer: (input: CreateCustomerInput) => Customer;
   updateCustomer: (id: string, updates: UpdateCustomerInput) => Customer;
@@ -353,6 +353,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [lastCloudSync, setLastCloudSync] = useState<Date | null>(null);
 
   const isMountedRef = useRef(true);
+  const purchasesRef = useRef<Purchase[]>(purchases);
+
+  useEffect(() => {
+    purchasesRef.current = purchases;
+  }, [purchases]);
 
   const pullAllFromCloud = async (): Promise<boolean> => {
     setCloudSyncStatus('SYNCING');
@@ -1560,14 +1565,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const createPurchase = (input: CreatePurchaseInput): Purchase => {
     const suppliersMap = new Map<string, Supplier>(suppliers.map((s) => [s.id, s]));
     const productsMap = new Map<string, Product>(products.map((p) => [p.id, p]));
-    const draft = PurchasingService.createDraftPurchase(input, suppliersMap, productsMap, purchases);
+    const currentPurchases = purchasesRef.current.length > 0 ? purchasesRef.current : purchases;
+    const draft = PurchasingService.createDraftPurchase(input, suppliersMap, productsMap, currentPurchases);
+    purchasesRef.current = [draft, ...purchasesRef.current];
     setPurchases((prev) => [draft, ...prev]);
     FirebaseService.syncPurchase(draft);
     return draft;
   };
 
-  const completePurchase = (purchaseId: string): CompletePurchaseResult => {
-    const purchase = purchases.find((p) => p.id === purchaseId);
+  const completePurchase = (purchaseOrId: string | Purchase): CompletePurchaseResult => {
+    const purchase =
+      typeof purchaseOrId === 'object' && purchaseOrId !== null
+        ? purchaseOrId
+        : purchasesRef.current.find((p) => p.id === purchaseOrId) ||
+          purchases.find((p) => p.id === purchaseOrId);
+
     if (!purchase) {
       throw new Error('Purchase not found.');
     }
@@ -1591,10 +1603,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Add inventory movements
     setMovements((prev) => [...result.newMovements, ...prev]);
 
-    // Update purchase in purchases list
-    setPurchases((prev) =>
-      prev.map((p) => (p.id === purchaseId ? result.completedPurchase : p))
-    );
+    // Update purchase in purchases list & purchasesRef
+    purchasesRef.current = [
+      result.completedPurchase,
+      ...purchasesRef.current.filter((p) => p.id !== purchase.id),
+    ];
+    setPurchases((prev) => {
+      const exists = prev.some((p) => p.id === purchase.id);
+      if (exists) {
+        return prev.map((p) => (p.id === purchase.id ? result.completedPurchase : p));
+      }
+      return [result.completedPurchase, ...prev];
+    });
 
     FirebaseService.syncPurchase(result.completedPurchase);
     result.updatedProducts.forEach((p) => FirebaseService.syncProduct(p));
@@ -1603,15 +1623,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return result;
   };
 
-  const cancelPurchase = (purchaseId: string): Purchase => {
-    const purchase = purchases.find((p) => p.id === purchaseId);
+  const cancelPurchase = (purchaseOrId: string | Purchase): Purchase => {
+    const purchase =
+      typeof purchaseOrId === 'object' && purchaseOrId !== null
+        ? purchaseOrId
+        : purchasesRef.current.find((p) => p.id === purchaseOrId) ||
+          purchases.find((p) => p.id === purchaseOrId);
+
     if (!purchase) {
       throw new Error('Purchase not found.');
     }
 
     const cancelled = PurchasingService.cancelPurchase(purchase);
+    purchasesRef.current = purchasesRef.current.map((p) =>
+      p.id === purchase.id ? cancelled : p
+    );
     setPurchases((prev) =>
-      prev.map((p) => (p.id === purchaseId ? cancelled : p))
+      prev.map((p) => (p.id === purchase.id ? cancelled : p))
     );
     FirebaseService.syncPurchase(cancelled);
     return cancelled;

@@ -24,6 +24,9 @@ import {
   Trash2,
   X,
   FileCheck2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { Purchase, PurchaseStatus, Product } from '../types';
@@ -53,6 +56,19 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
   const [datePreset, setDatePreset] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH' | 'CUSTOM'>('ALL');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+
+  // Sorting State: Default to newest purchase first (descending by date & sequence number)
+  const [sortBy, setSortBy] = useState<'date' | 'purchaseNumber' | 'total'>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (column: 'date' | 'purchaseNumber' | 'total') => {
+    if (sortBy === column) {
+      setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setSortBy(column);
+      setSortDirection('desc');
+    }
+  };
 
   // Modals
   const [isNewPurchaseModalOpen, setIsNewPurchaseModalOpen] = useState(false);
@@ -102,6 +118,13 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
     quantity: number;
   } | null>(null);
 
+  // Receive stock action feedback states
+  const [isReceivingStock, setIsReceivingStock] = useState(false);
+  const [receiveSuccessFlash, setReceiveSuccessFlash] = useState(false);
+  const [buttonShakeError, setButtonShakeError] = useState(false);
+  const [highlightedPurchaseId, setHighlightedPurchaseId] = useState<string | null>(null);
+  const [latestCompletedPurchase, setLatestCompletedPurchase] = useState<Purchase | null>(null);
+
   // Synthesize positive confirmation audio chime via Web Audio API
   const playAddItemSound = () => {
     try {
@@ -129,6 +152,77 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
       osc.stop(ctx.currentTime + 0.22);
     } catch {
       // Gracefully ignore if audio cannot play due to browser interaction restrictions
+    }
+  };
+
+  // Synthesize pleasant celebratory chime when stock is successfully received
+  const playReceiveSuccessSound = () => {
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
+      // Pleasant ascending 4-note chord chime: C5 (523.25) -> E5 (659.25) -> G5 (783.99) -> C6 (1046.5)
+      const chord = [
+        { freq: 523.25, time: 0, dur: 0.14 },
+        { freq: 659.25, time: 0.07, dur: 0.15 },
+        { freq: 783.99, time: 0.15, dur: 0.18 },
+        { freq: 1046.5, time: 0.24, dur: 0.35 },
+      ];
+
+      chord.forEach(({ freq, time, dur }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + time);
+
+        gain.gain.setValueAtTime(0.001, ctx.currentTime + time);
+        gain.gain.exponentialRampToValueAtTime(0.22, ctx.currentTime + time + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + time + dur);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(ctx.currentTime + time);
+        osc.stop(ctx.currentTime + time + dur);
+      });
+    } catch {
+      // Audio playback restrictions handled gracefully
+    }
+  };
+
+  // Warning buzz when action cannot proceed
+  const playWarningSound = () => {
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(280, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.18);
+
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.2);
+    } catch {
+      // Audio playback restrictions handled gracefully
     }
   };
 
@@ -192,16 +286,51 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
     return {};
   }, [datePreset, customStartDate, customEndDate]);
 
-  // Filtered purchases
+  // Filtered and sorted purchases (newest purchase first by default)
   const filteredPurchases = useMemo(() => {
-    return PurchasingService.filterPurchases(purchases, {
+    const list = PurchasingService.filterPurchases(purchases, {
       startDate: dateBounds.start,
       endDate: dateBounds.end,
       supplierId: supplierFilter === 'ALL' ? undefined : supplierFilter,
       status: statusFilter === 'ALL' ? undefined : (statusFilter as PurchaseStatus),
       search: searchQuery,
     });
-  }, [purchases, dateBounds, supplierFilter, statusFilter, searchQuery]);
+
+    return [...list].sort((a, b) => {
+      let comparison = 0;
+
+      if (sortBy === 'date') {
+        const timeA = new Date(a.purchaseDate || a.createdAt || '').getTime();
+        const timeB = new Date(b.purchaseDate || b.createdAt || '').getTime();
+        const validA = !isNaN(timeA);
+        const validB = !isNaN(timeB);
+
+        if (validA && validB && timeA !== timeB) {
+          comparison = timeA - timeB;
+        } else {
+          // Fallback to sequential number comparison
+          const numA = parseInt(a.purchaseNumber?.replace(/\D/g, '') || '0', 10);
+          const numB = parseInt(b.purchaseNumber?.replace(/\D/g, '') || '0', 10);
+          comparison = numA - numB;
+        }
+      } else if (sortBy === 'purchaseNumber') {
+        const numA = parseInt(a.purchaseNumber?.replace(/\D/g, '') || '0', 10);
+        const numB = parseInt(b.purchaseNumber?.replace(/\D/g, '') || '0', 10);
+        comparison = numA !== numB ? numA - numB : (a.purchaseNumber || '').localeCompare(b.purchaseNumber || '');
+      } else if (sortBy === 'total') {
+        comparison = (a.total || 0) - (b.total || 0);
+      }
+
+      // Tiebreaker: sequence number descending
+      if (comparison === 0) {
+        const numA = parseInt(a.purchaseNumber?.replace(/\D/g, '') || '0', 10);
+        const numB = parseInt(b.purchaseNumber?.replace(/\D/g, '') || '0', 10);
+        comparison = numA - numB;
+      }
+
+      return sortDirection === 'desc' ? -comparison : comparison;
+    });
+  }, [purchases, dateBounds, supplierFilter, statusFilter, searchQuery, sortBy, sortDirection]);
 
   const openNewPurchaseModal = () => {
     setFormSupplierId(activeSuppliers[0]?.id || '');
@@ -318,45 +447,108 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
 
   const handleSavePurchase = (autoComplete = false) => {
     setActionErrorMessage(null);
+    setItemError(null);
+
+    // 1. Auto-commit pending product if user picked one in the input fields but didn't click '+ Add Item'
+    let effectiveItems = [...formItems];
+    if (selectedProductId) {
+      const pendingQty = Number(itemQuantity) || 1;
+      const pendingCost = Number(itemUnitCost) || 0;
+      const existingIdx = effectiveItems.findIndex((i) => i.productId === selectedProductId);
+      if (existingIdx >= 0) {
+        effectiveItems[existingIdx] = {
+          ...effectiveItems[existingIdx],
+          quantity: effectiveItems[existingIdx].quantity + pendingQty,
+          unitCost: pendingCost,
+        };
+      } else {
+        effectiveItems.push({
+          productId: selectedProductId,
+          quantity: pendingQty,
+          unitCost: pendingCost,
+        });
+      }
+      setFormItems(effectiveItems);
+      setSelectedProductId('');
+      setItemQuantity(1);
+      setItemUnitCost(0);
+    }
+
+    if (!formSupplierId) {
+      playWarningSound();
+      setActionErrorMessage('Sila pilih Pembekal (Supplier) terlebih dahulu.');
+      return;
+    }
+
+    if (effectiveItems.length === 0) {
+      playWarningSound();
+      setButtonShakeError(true);
+      setItemError('Sila pilih dan tambah sekurang-kurangnya satu produk sebelum menyimpan atau menerima stok.');
+      setTimeout(() => setButtonShakeError(false), 800);
+      return;
+    }
 
     try {
-      if (!formSupplierId) {
-        throw new Error('Please select a supplier.');
-      }
-      if (formItems.length === 0) {
-        throw new Error('Purchase must contain at least one item.');
-      }
-
-      // 1. Create draft purchase
-      const created = createPurchase({
-        supplierId: formSupplierId,
-        purchaseDate: new Date(`${formDate}T12:00:00Z`).toISOString(),
-        items: formItems,
-        discount: Number(formDiscount) || 0,
-        notes: formNotes,
-      });
-
       if (autoComplete) {
-        // 2. Immediately complete & receive stock
-        completePurchase(created.id);
-        setActionSuccessMessage(
-          `Purchase ${created.purchaseNumber} created & stock received into inventory successfully!`
-        );
-      } else {
-        setActionSuccessMessage(`Purchase ${created.purchaseNumber} saved as DRAFT.`);
-      }
+        setIsReceivingStock(true);
+        setReceiveSuccessFlash(true);
+        playReceiveSuccessSound();
 
-      setIsNewPurchaseModalOpen(false);
-      setTimeout(() => setActionSuccessMessage(null), 5000);
+        // 1. Create draft purchase
+        const created = createPurchase({
+          supplierId: formSupplierId,
+          purchaseDate: new Date(`${formDate}T12:00:00Z`).toISOString(),
+          items: effectiveItems,
+          discount: Number(formDiscount) || 0,
+          notes: formNotes,
+        });
+
+        // 2. Immediately complete & receive stock into inventory
+        const res = completePurchase(created);
+        const completedRecord = res.completedPurchase;
+
+        setLatestCompletedPurchase(completedRecord);
+        setHighlightedPurchaseId(completedRecord.id);
+
+        // Keep visual flash state on button for 600ms so the user sees & hears the positive feedback
+        setTimeout(() => {
+          setIsReceivingStock(false);
+          setReceiveSuccessFlash(false);
+          setIsNewPurchaseModalOpen(false);
+          setActionSuccessMessage(
+            `Pesanan ${completedRecord.purchaseNumber} berjaya diterima! Stok inventori telah dikemas kini secara automatik.`
+          );
+
+          // Clear highlight after 4 seconds
+          setTimeout(() => {
+            setHighlightedPurchaseId((prev) => (prev === completedRecord.id ? null : prev));
+          }, 4000);
+        }, 600);
+      } else {
+        const created = createPurchase({
+          supplierId: formSupplierId,
+          purchaseDate: new Date(`${formDate}T12:00:00Z`).toISOString(),
+          items: effectiveItems,
+          discount: Number(formDiscount) || 0,
+          notes: formNotes,
+        });
+
+        setIsNewPurchaseModalOpen(false);
+        setActionSuccessMessage(`Pesanan ${created.purchaseNumber} disimpan sebagai DRAFT.`);
+        setTimeout(() => setActionSuccessMessage(null), 5000);
+      }
     } catch (err: any) {
-      setActionErrorMessage(err.message || 'Failed to process purchase.');
+      setIsReceivingStock(false);
+      setReceiveSuccessFlash(false);
+      setActionErrorMessage(err.message || 'Gagal memproses belian.');
     }
   };
 
   const handleCompleteExisting = (purchaseId: string) => {
     setActionErrorMessage(null);
     try {
-      const result = completePurchase(purchaseId);
+      const targetPurchase = purchases.find((p) => p.id === purchaseId);
+      const result = completePurchase(targetPurchase || purchaseId);
       setActionSuccessMessage(
         `Purchase ${result.completedPurchase.purchaseNumber} received! ${result.newMovements.length} inventory movements recorded.`
       );
@@ -372,7 +564,8 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
   const handleCancelExisting = (purchaseId: string) => {
     setActionErrorMessage(null);
     try {
-      const cancelled = cancelPurchase(purchaseId);
+      const targetPurchase = purchases.find((p) => p.id === purchaseId);
+      const cancelled = cancelPurchase(targetPurchase || purchaseId);
       setActionSuccessMessage(`Purchase ${cancelled.purchaseNumber} cancelled.`);
       if (selectedPurchaseForDetail?.id === purchaseId) {
         setSelectedPurchaseForDetail(cancelled);
@@ -412,14 +605,40 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
 
       {/* Action Messages */}
       {actionSuccessMessage && (
-        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-sm flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <PackageCheck className="w-5 h-5 text-emerald-600" />
-            <span className="font-medium">{actionSuccessMessage}</span>
+        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <PackageCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-emerald-950">{actionSuccessMessage}</p>
+              <p className="text-xs text-emerald-700">Tindakan seterusnya yang boleh dilakukan disediakan di sebelah kanan.</p>
+            </div>
           </div>
-          <button type="button" onClick={() => setActionSuccessMessage(null)} className="text-emerald-700">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {latestCompletedPurchase && (
+              <button
+                type="button"
+                id="btn-view-completed-purchase"
+                onClick={() => setSelectedPurchaseForDetail(latestCompletedPurchase)}
+                className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-lg transition shadow-2xs cursor-pointer flex items-center gap-1.5"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Lihat Perincian Belian</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setActionSuccessMessage(null);
+                setLatestCompletedPurchase(null);
+              }}
+              className="p-1.5 text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100 rounded-lg transition"
+              title="Tutup"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -544,21 +763,90 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
             <table className="w-full text-left border-collapse text-sm">
               <thead>
                 <tr className="border-b border-stone-200 bg-stone-50/75 text-stone-500 text-xs uppercase tracking-wider font-semibold">
-                  <th className="py-3.5 px-4">Purchase #</th>
-                  <th className="py-3.5 px-4">Date</th>
+                  <th className="py-3.5 px-4">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('purchaseNumber')}
+                      className="inline-flex items-center gap-1.5 hover:text-stone-800 transition font-semibold"
+                      title="Susun mengikut No. Pembelian"
+                    >
+                      <span>Purchase #</span>
+                      {sortBy === 'purchaseNumber' ? (
+                        sortDirection === 'desc' ? (
+                          <ArrowDown className="w-3.5 h-3.5 text-emerald-700" />
+                        ) : (
+                          <ArrowUp className="w-3.5 h-3.5 text-emerald-700" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-stone-300 hover:text-stone-500" />
+                      )}
+                    </button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('date')}
+                      className="inline-flex items-center gap-1.5 hover:text-stone-800 transition font-semibold"
+                      title="Susun mengikut Tarikh Pembelian (Terkini dahulu)"
+                    >
+                      <span>Date</span>
+                      {sortBy === 'date' ? (
+                        sortDirection === 'desc' ? (
+                          <ArrowDown className="w-3.5 h-3.5 text-emerald-700" />
+                        ) : (
+                          <ArrowUp className="w-3.5 h-3.5 text-emerald-700" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-stone-300 hover:text-stone-500" />
+                      )}
+                    </button>
+                  </th>
                   <th className="py-3.5 px-4">Supplier</th>
                   <th className="py-3.5 px-4 text-center">Items</th>
-                  <th className="py-3.5 px-4 text-right">Total</th>
+                  <th className="py-3.5 px-4 text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('total')}
+                      className="inline-flex items-center gap-1.5 hover:text-stone-800 transition font-semibold ml-auto"
+                      title="Susun mengikut Jumlah"
+                    >
+                      <span>Total</span>
+                      {sortBy === 'total' ? (
+                        sortDirection === 'desc' ? (
+                          <ArrowDown className="w-3.5 h-3.5 text-emerald-700" />
+                        ) : (
+                          <ArrowUp className="w-3.5 h-3.5 text-emerald-700" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-stone-300 hover:text-stone-500" />
+                      )}
+                    </button>
+                  </th>
                   <th className="py-3.5 px-4 text-center">Status</th>
                   <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100 text-stone-800">
                 {filteredPurchases.map((purchase) => {
+                  const isRecentlyHighlighted = highlightedPurchaseId === purchase.id;
                   return (
-                    <tr key={purchase.id} className="hover:bg-stone-50/60 transition-colors">
+                    <tr
+                      key={purchase.id}
+                      className={`transition-all duration-300 ${
+                        isRecentlyHighlighted
+                          ? 'bg-emerald-50/90 ring-2 ring-emerald-400 ring-inset shadow-xs'
+                          : 'hover:bg-stone-50/60 transition-colors'
+                      }`}
+                    >
                       <td className="py-3 px-4 font-mono font-bold text-xs text-stone-900">
-                        {purchase.purchaseNumber}
+                        <div className="flex items-center gap-1.5">
+                          <span>{purchase.purchaseNumber}</span>
+                          {isRecentlyHighlighted && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white animate-pulse">
+                              Baru Diterima ✨
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-xs text-stone-600">
                         {formatDateTime(purchase.purchaseDate)}
@@ -965,21 +1253,43 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <button
                   type="button"
-                  disabled={formItems.length === 0}
+                  id="btn-save-purchase-draft"
+                  disabled={isReceivingStock}
                   onClick={() => handleSavePurchase(false)}
-                  className="flex-1 sm:flex-none px-4 py-2 text-sm bg-stone-200 hover:bg-stone-300 disabled:opacity-50 text-stone-800 rounded-lg font-medium transition"
+                  className="flex-1 sm:flex-none px-4 py-2 text-sm bg-stone-200 hover:bg-stone-300 disabled:opacity-50 text-stone-800 rounded-lg font-medium transition cursor-pointer"
                 >
                   Save as Draft
                 </button>
 
                 <button
                   type="button"
-                  disabled={formItems.length === 0}
+                  id="btn-receive-stock-now"
+                  disabled={isReceivingStock}
                   onClick={() => handleSavePurchase(true)}
-                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 text-sm bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg font-semibold transition shadow-xs cursor-pointer"
+                  className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4.5 py-2 text-sm rounded-lg font-semibold transition-all duration-200 shadow-xs cursor-pointer active:scale-95 select-none ${
+                    buttonShakeError
+                      ? 'bg-rose-600 text-white ring-2 ring-rose-400 animate-pulse'
+                      : receiveSuccessFlash
+                      ? 'bg-emerald-600 text-white ring-4 ring-emerald-300 ring-offset-1 scale-[1.03] shadow-md shadow-emerald-200'
+                      : 'bg-emerald-700 hover:bg-emerald-800 text-white hover:shadow-md'
+                  }`}
                 >
-                  <PackageCheck className="w-4 h-4" />
-                  <span>Receive Stock Now</span>
+                  {receiveSuccessFlash ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 animate-bounce text-white" />
+                      <span className="font-bold tracking-wide">✓ Stok Berjaya Diterima!</span>
+                    </>
+                  ) : isReceivingStock ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Menerima Stok...</span>
+                    </>
+                  ) : (
+                    <>
+                      <PackageCheck className="w-4 h-4" />
+                      <span>Receive Stock Now</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
