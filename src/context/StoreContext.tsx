@@ -258,6 +258,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (activeCashiers.length === 0) {
       return null;
     }
+    const savedStore = StorageService.safeParse<Store>(
+      localStorage.getItem(STORAGE_KEYS.STORE),
+      INITIAL_STORE,
+      (val) => !!val && typeof val === 'object'
+    );
     const savedCashierId = localStorage.getItem(STORAGE_KEYS.ACTIVE_CASHIER_ID);
     if (savedCashierId === 'store-owner') {
       return null;
@@ -266,7 +271,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const match = activeCashiers.find((s) => s.id === savedCashierId);
       if (match) return match;
     }
-    return activeCashiers[0] || null;
+    const adminDefaultCashierId = savedStore?.settings?.defaultCashierId;
+    if (adminDefaultCashierId && adminDefaultCashierId !== 'store-owner') {
+      const defaultMatch = activeCashiers.find((c) => c.id === adminDefaultCashierId);
+      if (defaultMatch) return defaultMatch;
+    }
+    // Default Cashier = Store Owner (null)
+    return null;
   });
 
   const [lastCatalogSyncInfo, setLastCatalogSyncInfo] = useState<LastCatalogSyncInfo | null>(() => {
@@ -327,7 +338,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       );
       if (!isStillActiveCashier) {
         const remainingCashiers = StaffService.getActiveCashiers(staffUsers);
-        setActiveStaff(remainingCashiers[0] || null);
+        const adminDefaultCashierId = store.settings?.defaultCashierId;
+        const defaultMatch =
+          adminDefaultCashierId && adminDefaultCashierId !== 'store-owner'
+            ? remainingCashiers.find((c) => c.id === adminDefaultCashierId)
+            : null;
+        setActiveStaff(defaultMatch || null);
       }
     }
   }, [staffUsers, activeStaff]);

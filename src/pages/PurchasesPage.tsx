@@ -12,6 +12,7 @@ import {
   Plus,
   Search,
   CheckCircle2,
+  Check,
   Clock,
   XCircle,
   Eye,
@@ -28,6 +29,7 @@ import { useStore } from '../context/StoreContext';
 import { Purchase, PurchaseStatus, Product } from '../types';
 import { formatCurrency, formatDateTime } from '../services/formatters';
 import { PurchasingService } from '../services/purchasingService';
+import { ProductSearchPicker } from '../components/purchases/ProductSearchPicker';
 
 interface PurchasesPageProps {
   onNavigate?: (page: any) => void;
@@ -92,8 +94,70 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
   const [itemUnitCost, setItemUnitCost] = useState<number>(0);
   const [itemError, setItemError] = useState<string | null>(null);
 
+  // Item addition feedback state (flash indicator & audio feedback)
+  const [isItemAddedSuccess, setIsItemAddedSuccess] = useState(false);
+  const [recentlyAddedItemInfo, setRecentlyAddedItemInfo] = useState<{
+    productId: string;
+    name: string;
+    quantity: number;
+  } | null>(null);
+
+  // Synthesize positive confirmation audio chime via Web Audio API
+  const playAddItemSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      // Crisp POS positive confirmation chime: E5 (659.25Hz) -> A5 (880Hz)
+      osc.frequency.setValueAtTime(659.25, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.08);
+
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.22);
+    } catch {
+      // Gracefully ignore if audio cannot play due to browser interaction restrictions
+    }
+  };
+
   const activeSuppliers = useMemo(() => suppliers.filter((s) => s.active), [suppliers]);
   const activeProducts = useMemo(() => products.filter((p) => p.active), [products]);
+
+  // Section 6: Extract recently purchased active products from actual purchase history
+  const recentlyPurchasedProducts = useMemo(() => {
+    const seenProductIds = new Set<string>();
+    const recentList: Product[] = [];
+    const sorted = [...purchases].sort(
+      (a, b) => new Date(b.purchaseDate || b.createdAt).getTime() - new Date(a.purchaseDate || a.createdAt).getTime()
+    );
+    for (const purchase of sorted) {
+      if (!purchase.items) continue;
+      for (const item of purchase.items) {
+        if (!seenProductIds.has(item.productId)) {
+          seenProductIds.add(item.productId);
+          const prod = activeProducts.find((p) => p.id === item.productId);
+          if (prod) {
+            recentList.push(prod);
+            if (recentList.length >= 5) break;
+          }
+        }
+      }
+      if (recentList.length >= 5) break;
+    }
+    return recentList;
+  }, [purchases, activeProducts]);
 
   // Date boundary calculation
   const dateBounds = useMemo(() => {
@@ -139,24 +203,19 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
     });
   }, [purchases, dateBounds, supplierFilter, statusFilter, searchQuery]);
 
-  // Summary Metrics
-  const summary = useMemo(() => {
-    return PurchasingService.calculatePurchasingSummary(filteredPurchases, activeSuppliers.length);
-  }, [filteredPurchases, activeSuppliers.length]);
-
   const openNewPurchaseModal = () => {
     setFormSupplierId(activeSuppliers[0]?.id || '');
     setFormDate(new Date().toISOString().substring(0, 10));
     setFormNotes('');
     setFormDiscount(0);
     setFormItems([]);
-    setSelectedProductId(activeProducts[0]?.id || '');
-    if (activeProducts[0]) {
-      setItemUnitCost(activeProducts[0].costPrice);
-    }
+    setSelectedProductId('');
+    setItemUnitCost(0);
     setItemQuantity(10);
     setItemError(null);
     setActionErrorMessage(null);
+    setIsItemAddedSuccess(false);
+    setRecentlyAddedItemInfo(null);
     setIsNewPurchaseModalOpen(true);
   };
 
@@ -165,7 +224,19 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
     const prod = products.find((p) => p.id === prodId);
     if (prod) {
       setItemUnitCost(prod.costPrice);
+      setItemError(null);
     }
+  };
+
+  const handleSelectProduct = (product: Product) => {
+    setSelectedProductId(product.id);
+    setItemUnitCost(product.costPrice);
+    setItemError(null);
+  };
+
+  const handleClearProduct = () => {
+    setSelectedProductId('');
+    setItemUnitCost(0);
   };
 
   const handleAddItem = (e: React.FormEvent) => {
@@ -187,7 +258,11 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
       return;
     }
 
-    const existingIndex = formItems.findIndex((i) => i.productId === selectedProductId);
+    const currentProductId = selectedProductId;
+    const addedProduct = products.find((p) => p.id === currentProductId);
+    const addedQty = Number(itemQuantity);
+
+    const existingIndex = formItems.findIndex((i) => i.productId === currentProductId);
     if (existingIndex >= 0) {
       // Update existing line
       const updated = [...formItems];
@@ -198,12 +273,38 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
       setFormItems([
         ...formItems,
         {
-          productId: selectedProductId,
+          productId: currentProductId,
           quantity: Number(itemQuantity),
           unitCost: Number(itemUnitCost),
         },
       ]);
     }
+
+    // 1. Play POS confirmation audio chime
+    playAddItemSound();
+
+    // 2. Trigger visual confirmation state on button & highlight notification banner
+    setIsItemAddedSuccess(true);
+    setRecentlyAddedItemInfo({
+      productId: currentProductId,
+      name: addedProduct?.name || 'Produk',
+      quantity: addedQty,
+    });
+
+    // Reset button flash back to normal after 1.5 seconds
+    setTimeout(() => {
+      setIsItemAddedSuccess(false);
+    }, 1500);
+
+    // Fade out row highlight and notification banner after 2.8 seconds
+    setTimeout(() => {
+      setRecentlyAddedItemInfo((prev) => (prev?.productId === currentProductId ? null : prev));
+    }, 2800);
+
+    // Reset product selection and draft fields so user can immediately search & add next product
+    setSelectedProductId('');
+    setItemUnitCost(0);
+    setItemQuantity(1);
   };
 
   const handleRemoveItem = (index: number) => {
@@ -333,37 +434,6 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
           </button>
         </div>
       )}
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-xl border border-stone-200 shadow-2xs">
-          <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Completed Purchases</span>
-          <div className="text-2xl font-bold text-stone-900 mt-1">{summary.completedPurchases}</div>
-          <span className="text-xs text-stone-400 mt-1 block">
-            {summary.draftPurchases > 0 ? `${summary.draftPurchases} draft pending` : 'All finalized'}
-          </span>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-stone-200 shadow-2xs">
-          <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Total Purchase Value</span>
-          <div className="text-2xl font-bold text-stone-900 mt-1">
-            {formatCurrency(summary.totalPurchaseValue, store.currency)}
-          </div>
-          <span className="text-xs text-stone-400 mt-1 block">Received inventory cost</span>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-stone-200 shadow-2xs">
-          <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Units Purchased</span>
-          <div className="text-2xl font-bold text-emerald-700 mt-1">{summary.totalUnitsPurchased}</div>
-          <span className="text-xs text-stone-400 mt-1 block">Units added to inventory</span>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-stone-200 shadow-2xs">
-          <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Active Suppliers</span>
-          <div className="text-2xl font-bold text-stone-900 mt-1">{activeSuppliers.length}</div>
-          <span className="text-xs text-stone-400 mt-1 block">Procurement partners</span>
-        </div>
-      </div>
 
       {/* Filter & Search Bar */}
       <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-3">
@@ -667,20 +737,19 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
                   <div className="sm:col-span-5">
-                    <label className="block text-[11px] font-medium text-stone-600 mb-1">
-                      Product (Active Only)
+                    <label htmlFor="purchase-product-search-input" className="block text-[11px] font-medium text-stone-600 mb-1">
+                      Product (Active Only) <span className="text-rose-600">*</span>
                     </label>
-                    <select
-                      value={selectedProductId}
-                      onChange={(e) => handleProductSelectionChange(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-stone-50 border border-stone-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-emerald-600"
-                    >
-                      {activeProducts.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} ({p.sku}) — Curr. Stock: {p.currentStock}
-                        </option>
-                      ))}
-                    </select>
+                    <ProductSearchPicker
+                      products={activeProducts}
+                      selectedProductId={selectedProductId}
+                      onSelectProduct={handleSelectProduct}
+                      onClearProduct={handleClearProduct}
+                      currency={store.currency}
+                      recentlyPurchasedProducts={recentlyPurchasedProducts}
+                      placeholder="Cari nama produk atau SKU (cth: Botan)..."
+                      hasError={!!itemError && !selectedProductId}
+                    />
                   </div>
 
                   <div className="sm:col-span-2">
@@ -714,13 +783,53 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
                   <div className="sm:col-span-2">
                     <button
                       type="button"
+                      id="add-purchase-item-btn"
                       onClick={handleAddItem}
-                      className="w-full px-3 py-2 text-xs bg-stone-900 hover:bg-stone-800 text-white rounded-lg font-medium transition cursor-pointer"
+                      className={`w-full px-3 py-2 text-xs rounded-lg font-medium transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 shadow-xs active:scale-95 ${
+                        isItemAddedSuccess
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-400 ring-offset-1 scale-[1.02]'
+                          : 'bg-stone-900 hover:bg-stone-800 text-white'
+                      }`}
                     >
-                      + Add Item
+                      {isItemAddedSuccess ? (
+                        <>
+                          <Check className="w-4 h-4 stroke-[2.5]" />
+                          <span>✓ Ditambah!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>+ Add Item</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
+
+                {/* Visual Feedback Flash Notification */}
+                {recentlyAddedItemInfo && (
+                  <div
+                    id="purchase-item-added-alert"
+                    className="mt-2.5 px-3 py-2 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-lg text-xs flex items-center justify-between gap-2 shadow-xs transition-all duration-200"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+                      </span>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="truncate">
+                        Item berjaya masuk ke senarai:{' '}
+                        <strong className="font-semibold text-emerald-950">
+                          {recentlyAddedItemInfo.quantity}x {recentlyAddedItemInfo.name}
+                        </strong>
+                      </span>
+                    </div>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded shrink-0 border border-emerald-300">
+                      ✓ Masuk List
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Items List Table */}
@@ -749,11 +858,26 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({ onNavigate }) => {
                         {formItems.map((item, idx) => {
                           const prod = products.find((p) => p.id === item.productId);
                           const lineTotal = item.quantity * item.unitCost;
+                          const isRecentlyAdded = recentlyAddedItemInfo?.productId === item.productId;
 
                           return (
-                            <tr key={idx} className="hover:bg-stone-50/70">
+                            <tr
+                              key={idx}
+                              className={`transition-colors duration-500 ${
+                                isRecentlyAdded
+                                  ? 'bg-emerald-100/90 ring-2 ring-inset ring-emerald-400 font-medium'
+                                  : 'hover:bg-stone-50/70'
+                              }`}
+                            >
                               <td className="py-2.5 px-3">
-                                <div className="font-medium text-stone-900">{prod?.name || 'Unknown'}</div>
+                                <div className="flex items-center gap-1.5">
+                                  <div className="font-medium text-stone-900">{prod?.name || 'Unknown'}</div>
+                                  {isRecentlyAdded && (
+                                    <span className="text-[9px] bg-emerald-600 text-white font-bold px-1 py-0.2 rounded shrink-0">
+                                      Baru Ditambah
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="text-[10px] text-stone-400 font-mono">{prod?.sku}</div>
                               </td>
                               <td className="py-2.5 px-3 text-center font-bold text-stone-800">

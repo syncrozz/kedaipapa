@@ -18,6 +18,7 @@ export interface StoreSettings {
   enableCustomerManagement?: boolean;
   enableLoyalty?: boolean;
   enableStaff?: boolean;
+  defaultCashierId?: string; // 'store-owner' or specific staff id. Defaults to 'store-owner' if not set
   loyaltyPointsPerCurrency?: number; // e.g. 1 point per RM 1 (default: 1)
   loyaltyRedemptionRatio?: number; // e.g. 100 points = RM 1 (default: 100)
 }

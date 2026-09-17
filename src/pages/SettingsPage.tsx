@@ -111,6 +111,7 @@ export const SettingsPage: React.FC = () => {
   const [enableLoyalty, setEnableLoyalty] = useState(store.settings?.enableLoyalty !== false);
   const [loyaltyPointsPerCurrency, setLoyaltyPointsPerCurrency] = useState(store.settings?.loyaltyPointsPerCurrency || 1);
   const [enableStaff, setEnableStaff] = useState(store.settings?.enableStaff !== false);
+  const [defaultCashierId, setDefaultCashierId] = useState(store.settings?.defaultCashierId || 'store-owner');
   const [moduleSettingsSuccess, setModuleSettingsSuccess] = useState(false);
 
   // Backup & Restore State
@@ -177,6 +178,7 @@ export const SettingsPage: React.FC = () => {
           enableLoyalty,
           loyaltyPointsPerCurrency: Math.max(1, loyaltyPointsPerCurrency),
           enableStaff,
+          defaultCashierId: defaultCashierId || 'store-owner',
         },
       });
       setModuleSettingsSuccess(true);
@@ -532,27 +534,57 @@ export const SettingsPage: React.FC = () => {
             </div>
 
             {/* Staff Attribution */}
-            <div className="p-4 rounded-xl border border-stone-200 flex items-start justify-between gap-4 bg-stone-50/60">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-blue-100 text-blue-800 mt-0.5">
-                  <UserCheck className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="font-semibold text-xs text-stone-900">Staff & Cashier Attribution</div>
-                  <div className="text-[11px] text-stone-500 mt-0.5">
-                    Allow selecting active cashier at checkout and snapshots cashier name directly on receipts.
+            <div className="p-4 rounded-xl border border-stone-200 bg-stone-50/60 space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-blue-100 text-blue-800 mt-0.5">
+                    <UserCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-xs text-stone-900">Staff & Cashier Attribution</div>
+                    <div className="text-[11px] text-stone-500 mt-0.5">
+                      Allow selecting active cashier at checkout and snapshots cashier name directly on receipts.
+                    </div>
                   </div>
                 </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={enableStaff}
+                    onChange={(e) => setEnableStaff(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-stone-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-700"></div>
+                </label>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                <input
-                  type="checkbox"
-                  checked={enableStaff}
-                  onChange={(e) => setEnableStaff(e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-9 h-5 bg-stone-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-700"></div>
-              </label>
+
+              {enableStaff && (
+                <div className="pt-3 border-t border-stone-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div>
+                    <label htmlFor="setting-default-cashier-select" className="text-xs font-semibold text-stone-800 block">
+                      Default Cashier
+                    </label>
+                    <div className="text-[11px] text-stone-500">
+                      Jurutera/kakitangan lalai semasa membuka POS jika tidak diubah. (Lalai: Store Owner)
+                    </div>
+                  </div>
+                  <select
+                    id="setting-default-cashier-select"
+                    value={defaultCashierId}
+                    onChange={(e) => setDefaultCashierId(e.target.value)}
+                    className="text-xs font-semibold text-stone-800 bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-emerald-600 focus:outline-none cursor-pointer shrink-0"
+                  >
+                    <option value="store-owner">Store Owner (Default)</option>
+                    {staffUsers
+                      .filter((s) => s.active && s.role === 'CASHIER')
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.staffCode || s.userCode})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 

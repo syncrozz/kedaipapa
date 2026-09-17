@@ -276,8 +276,15 @@ export const PosPage: React.FC = () => {
       const match = activeCashiers.find((c) => c.id === savedCashierId);
       if (match) return match;
     }
-    return activeCashiers[0] || null;
-  }, [store.settings?.enableStaff, activeCashiers, activeStaff]);
+    // Check if Admin configured a specific default cashier in Store Settings
+    const adminDefaultCashierId = store.settings?.defaultCashierId;
+    if (adminDefaultCashierId && adminDefaultCashierId !== 'store-owner') {
+      const defaultMatch = activeCashiers.find((c) => c.id === adminDefaultCashierId);
+      if (defaultMatch) return defaultMatch;
+    }
+    // Default fallback: Store Owner (null)
+    return null;
+  }, [store.settings?.enableStaff, store.settings?.defaultCashierId, activeCashiers, activeStaff]);
 
   const selectedCashierValue = currentCashier ? currentCashier.id : 'store-owner';
 
@@ -550,6 +557,13 @@ export const PosPage: React.FC = () => {
     );
   }, [sales, todayPrefix]);
 
+  const scrollToCart = () => {
+    const cartEl = document.getElementById('pos-cart-section');
+    if (cartEl) {
+      cartEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Top Header */}
@@ -557,14 +571,14 @@ export const PosPage: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-stone-900 tracking-tight">
-              POS Checkout & Register
+              POS
             </h1>
             <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
               Cash Active
             </span>
           </div>
           <p className="text-xs text-stone-500 mt-0.5">
-            Real-time retail register for {store.name} • Price snapshotting, cash tender, and atomic stock deductions.
+            Real-time retail register, Price snapshotting, cash tender, atomic stock deductions.
           </p>
         </div>
 
@@ -594,12 +608,12 @@ export const PosPage: React.FC = () => {
                 }}
                 className="bg-transparent font-semibold text-stone-900 border-none focus:outline-none cursor-pointer"
               >
+                <option value="store-owner">Store Owner</option>
                 {activeCashiers.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name} ({s.staffCode || s.userCode})
                   </option>
                 ))}
-                <option value="store-owner">Store Owner</option>
               </select>
             </div>
           ) : (
@@ -681,14 +695,36 @@ export const PosPage: React.FC = () => {
         <div className="lg:col-span-7 flex flex-col gap-4">
           {/* Search bar & Category chips */}
           <div className="order-2 lg:order-1 sticky bottom-2 lg:top-2 z-20 bg-white/95 backdrop-blur-md p-4 rounded-2xl border-2 border-emerald-500/40 shadow-lg shadow-stone-900/5 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <label htmlFor="pos-search-input" className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 tracking-wide uppercase">
                 <Barcode className="w-4 h-4 text-emerald-600" />
-                <span>Carian & Imbasan Barcode</span>
+                <span className="hidden sm:inline">Carian & Imbasan Barcode</span>
+                <span className="sm:hidden">Carian Barcode</span>
               </label>
-              <span className="text-[11px] font-medium text-stone-500">
-                {filteredProducts.length} produk sedia ada
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium text-stone-500 hidden md:inline">
+                  {filteredProducts.length} produk sedia ada
+                </span>
+                <button
+                  type="button"
+                  id="pos-direct-to-cart-btn"
+                  onClick={scrollToCart}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer border ${
+                    liveCart.length > 0
+                      ? 'bg-emerald-700 hover:bg-emerald-800 text-white border-emerald-800 shadow-emerald-700/20 active:scale-95'
+                      : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-200'
+                  }`}
+                  title="Terus ke Troli & Checkout"
+                >
+                  <ShoppingCart className="w-3.5 h-3.5" />
+                  <span>Ke Troli</span>
+                  {liveCart.length > 0 && (
+                    <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-white text-emerald-800 text-[10px] font-mono font-black">
+                      {liveCart.reduce((a, b) => a + b.quantity, 0)}
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
 
             <div className="relative">
@@ -893,7 +929,7 @@ export const PosPage: React.FC = () => {
         </div>
 
         {/* Right Column: Active Order Ticket & Checkout (5 cols) */}
-        <div className="lg:col-span-5 space-y-4">
+        <div id="pos-cart-section" className="lg:col-span-5 space-y-4 scroll-mt-6">
           <div className="bg-white rounded-2xl border border-stone-200/90 shadow-2xs flex flex-col overflow-hidden">
             {/* Ticket Header */}
             <div className="p-4 border-b border-stone-200/80 flex items-center justify-between bg-stone-50/80">

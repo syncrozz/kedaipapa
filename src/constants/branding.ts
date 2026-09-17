@@ -16,6 +16,8 @@ export const KEDAI_PAPA_ASSETS = {
   logo192: `${KEDAI_PAPA_ASSET_BASE}/android-chrome-192x192.png`,
 
   // PWA / App Icons
+  icon192: `${KEDAI_PAPA_ASSET_BASE}/android-chrome-192x192.png`,
+  icon512: `${KEDAI_PAPA_ASSET_BASE}/android-chrome-512x512.png`,
   androidChrome192: `${KEDAI_PAPA_ASSET_BASE}/android-chrome-192x192.png`,
   androidChrome512: `${KEDAI_PAPA_ASSET_BASE}/android-chrome-512x512.png`,
   appleTouchIcon: `${KEDAI_PAPA_ASSET_BASE}/apple-touch-icon.png`,
