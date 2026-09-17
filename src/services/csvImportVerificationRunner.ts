@@ -24,7 +24,7 @@ import { SmartInputService } from './smartInputService';
 export interface CsvImportTestResult {
   code: string;
   name: string;
-  category: 'Import Modes' | 'Stock Safety' | 'Financial Integrity' | 'Atomic Ops' | 'Validation';
+  category: 'Import Modes' | 'Stock Safety' | 'Financial Integrity' | 'Atomic Ops' | 'Validation' | 'Export Ops';
   status: 'PASSED' | 'FAILED';
   passed: boolean;
   message: string;
@@ -93,6 +93,7 @@ export class CsvImportVerificationRunner {
           sellingPrice: updateData.sellingPrice,
           minimumStock: updateData.minimumStock,
           active: updateData.active,
+          imageUrl: updateData.imageUrl !== undefined ? updateData.imageUrl : prod.imageUrl,
           updatedAt: now,
         };
       }
@@ -775,6 +776,202 @@ export class CsvImportVerificationRunner {
         passed: false,
         message: err.message,
         details: 'Exception in Test K.',
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // TEST L: CSV Export with Image URL & Backup Filename (SES v4.5)
+    // -------------------------------------------------------------------------
+    try {
+      const sampleProducts: Product[] = [
+        {
+          ...initialProduct1,
+          imageUrl: 'https://images.unsplash.com/photo-sample-1',
+        },
+        {
+          ...initialProduct2,
+          imageUrl: undefined,
+        },
+      ];
+
+      const { csvText, filename } = CsvService.generateProductsCsvContent(sampleProducts);
+      const { rows: rowsParsed } = CsvService.parseCsvText(csvText);
+
+      const validUrlCheck =
+        CsvService.isValidImageUrl('https://images.unsplash.com/photo-123') &&
+        CsvService.isValidImageUrl('http://cdn.kedaipapa.com/products/snack.png') &&
+        CsvService.isValidImageUrl('/assets/products/item.jpg');
+
+      const invalidUrlCheck =
+        !CsvService.isValidImageUrl('javascript:alert(1)') &&
+        !CsvService.isValidImageUrl('data:text/html;base64,PHNjcmlwdD4=') &&
+        !CsvService.isValidImageUrl('');
+
+      const filenameMatchesPattern = /^kedai_papa_products_backup_\d{4}-\d{2}-\d{2}\.csv$/.test(filename);
+
+      const hasImageUrlColumn = Object.keys(rowsParsed[0] || {}).some((k) =>
+        /image.*url|imageUrl|url.*gambar/i.test(k)
+      );
+
+      const product1ExportedUrl = rowsParsed[0]
+        ? rowsParsed[0]['Image URL'] || rowsParsed[0]['imageUrl'] || ''
+        : '';
+      const product2ExportedUrl = rowsParsed[1]
+        ? rowsParsed[1]['Image URL'] || rowsParsed[1]['imageUrl'] || ''
+        : '';
+
+      const passed =
+        hasImageUrlColumn &&
+        product1ExportedUrl === 'https://images.unsplash.com/photo-sample-1' &&
+        product2ExportedUrl === '' &&
+        validUrlCheck &&
+        invalidUrlCheck &&
+        filenameMatchesPattern;
+
+      results.push({
+        code: 'TEST-CSV-L',
+        name: 'CSV Export with Image URL & Filename Format (SES v4.5)',
+        category: 'Export Ops',
+        status: passed ? 'PASSED' : 'FAILED',
+        passed,
+        message: 'Product export includes Image URL header and preserves URL data or blanks consistently with backup format.',
+        details: `Export verified with valid URL checks and backup naming format 'kedai_papa_products_backup_YYYY-MM-DD.csv'.`,
+      });
+    } catch (err: any) {
+      results.push({
+        code: 'TEST-CSV-L',
+        name: 'CSV Export with Image URL & Filename Format (SES v4.5)',
+        category: 'Export Ops',
+        status: 'FAILED',
+        passed: false,
+        message: err.message,
+        details: 'Exception in Test L.',
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // TEST M: CSV Import & Restore Image URL with Backward Compatibility
+    // -------------------------------------------------------------------------
+    try {
+      const existingProductWithImg: Product = {
+        ...initialProduct1,
+        imageUrl: 'https://images.unsplash.com/photo-original-img',
+      };
+
+      // 1. Backward compatibility: CSV without Image URL column
+      const legacyCsvRows = [
+        {
+          sku: existingProductWithImg.sku,
+          name: 'Produk Lama Kemaskini',
+          costPrice: '6.00',
+          sellingPrice: '11.00',
+          // NO imageUrl property at all
+        },
+      ];
+      const legacyValidation = CsvService.validateProductsUpsert(legacyCsvRows, [existingProductWithImg], 'UPDATE_EXISTING');
+      const legacyUpdated = legacyValidation.updateItems[0];
+      const legacyPreserved = legacyUpdated?.imageUrl === 'https://images.unsplash.com/photo-original-img';
+
+      // 2. CSV with new valid Image URL (Restoring backup)
+      const restoreCsvRows = [
+        {
+          sku: existingProductWithImg.sku,
+          name: 'Produk Pulih URL',
+          imageUrl: 'https://images.unsplash.com/photo-restored-backup',
+        },
+      ];
+      const restoreValidation = CsvService.validateProductsUpsert(restoreCsvRows, [existingProductWithImg], 'UPDATE_EXISTING');
+      const restoreUpdated = restoreValidation.updateItems[0];
+      const restoreApplied = restoreUpdated?.imageUrl === 'https://images.unsplash.com/photo-restored-backup';
+
+      // 3. CSV with empty Image URL field -> Strictly preserves existing imageUrl
+      const emptyUrlCsvRows = [
+        {
+          sku: existingProductWithImg.sku,
+          name: 'Produk Kosong URL',
+          imageUrl: '',
+        },
+      ];
+      const emptyValidation = CsvService.validateProductsUpsert(emptyUrlCsvRows, [existingProductWithImg], 'UPDATE_EXISTING');
+      const emptyUpdated = emptyValidation.updateItems[0];
+      const emptyPreserved = emptyUpdated?.imageUrl === 'https://images.unsplash.com/photo-original-img';
+
+      // 4. Simulate commit
+      const commitRes = this.simulateCommitUpsert([existingProductWithImg], [], {
+        mode: 'UPDATE_EXISTING',
+        newItems: [],
+        updateItems: [restoreUpdated],
+      });
+      const committedProduct = commitRes.products.find((p) => p.id === existingProductWithImg.id);
+      const commitVerified = committedProduct?.imageUrl === 'https://images.unsplash.com/photo-restored-backup';
+
+      const passed = legacyPreserved && restoreApplied && emptyPreserved && commitVerified;
+
+      results.push({
+        code: 'TEST-CSV-M',
+        name: 'CSV Import & Restore Image URL (Backward Compatibility)',
+        category: 'Import Modes',
+        status: passed ? 'PASSED' : 'FAILED',
+        passed,
+        message: 'Import preserves existing imageUrl when column is missing or empty, and restores new valid URLs cleanly.',
+        details: `Legacy preserved: ${legacyPreserved}, Restore applied: ${restoreApplied}, Empty preserved: ${emptyPreserved}, Committed: ${commitVerified}.`,
+      });
+    } catch (err: any) {
+      results.push({
+        code: 'TEST-CSV-M',
+        name: 'CSV Import & Restore Image URL (Backward Compatibility)',
+        category: 'Import Modes',
+        status: 'FAILED',
+        passed: false,
+        message: err.message,
+        details: 'Exception in Test M.',
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // TEST N: Invalid & Malformed Image URLs Safely Rejected Without Data Loss
+    // -------------------------------------------------------------------------
+    try {
+      const existingProductWithImg: Product = {
+        ...initialProduct1,
+        imageUrl: 'https://images.unsplash.com/photo-safe-original',
+      };
+
+      const maliciousCsvRows = [
+        {
+          sku: existingProductWithImg.sku,
+          name: 'Produk URL Jahat',
+          imageUrl: 'javascript:alert("XSS")',
+        },
+      ];
+
+      const validation = CsvService.validateProductsUpsert(maliciousCsvRows, [existingProductWithImg], 'UPDATE_EXISTING');
+      const updateItem = validation.updateItems[0];
+
+      // Existing image URL must remain intact; malicious/invalid URL must be rejected
+      const preservedSafeUrl = updateItem?.imageUrl === 'https://images.unsplash.com/photo-safe-original';
+      const hasWarning = validation.errors.some((e) => e.reason.includes('tidak sah dan telah diabaikan'));
+
+      const passed = preservedSafeUrl && hasWarning;
+
+      results.push({
+        code: 'TEST-CSV-N',
+        name: 'Invalid & Malformed Image URLs Safely Rejected Without Data Loss',
+        category: 'Validation',
+        status: passed ? 'PASSED' : 'FAILED',
+        passed,
+        message: 'Invalid or script injection URLs are safely filtered out, existing images are preserved, and warnings logged.',
+        details: `Safe URL preserved: ${preservedSafeUrl}, Warning captured: ${hasWarning}.`,
+      });
+    } catch (err: any) {
+      results.push({
+        code: 'TEST-CSV-N',
+        name: 'Invalid & Malformed Image URLs Safely Rejected Without Data Loss',
+        category: 'Validation',
+        status: 'FAILED',
+        passed: false,
+        message: err.message,
+        details: 'Exception in Test N.',
       });
     }
 

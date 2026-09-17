@@ -768,6 +768,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           sellingPrice: updateData.sellingPrice,
           minimumStock: updateData.minimumStock,
           active: updateData.active,
+          imageUrl: updateData.imageUrl !== undefined ? updateData.imageUrl : prod.imageUrl,
           updatedAt: now,
           // Note: currentStock is strictly preserved from prod.currentStock!
           // Note: id is strictly preserved from prod.id!
@@ -968,6 +969,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           minimumStock: csvRow.minimumStock,
           currentStock: targetStock,
           active: csvRow.active,
+          imageUrl: csvRow.imageUrl !== undefined ? csvRow.imageUrl : prod.imageUrl,
           updatedAt: now,
         });
       } else {
@@ -1006,6 +1008,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         currentStock: r.csvStock,
         minimumStock: r.minimumStock,
         active: r.active,
+        imageUrl: r.imageUrl,
         createdAt: now,
         updatedAt: now,
       };

@@ -879,8 +879,23 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
                                 {row.sku}
                               </td>
                               <td className="p-2">
-                                <div className="font-medium text-stone-900">{row.name}</div>
-                                <div className="text-[10px] text-stone-500">{row.category}</div>
+                                <div className="flex items-center gap-2">
+                                  {row.imageUrl ? (
+                                    <img
+                                      src={row.imageUrl}
+                                      alt={row.name}
+                                      className="w-7 h-7 rounded object-cover border border-stone-200 shrink-0 bg-stone-100"
+                                      referrerPolicy="no-referrer"
+                                      onError={(e) => {
+                                        (e.target as HTMLElement).style.display = 'none';
+                                      }}
+                                    />
+                                  ) : null}
+                                  <div className="min-w-0">
+                                    <div className="font-medium text-stone-900 truncate">{row.name}</div>
+                                    <div className="text-[10px] text-stone-500 truncate">{row.category}</div>
+                                  </div>
+                                </div>
                               </td>
                               <td className="p-2 text-right whitespace-nowrap text-[11px]">
                                 <span className={row.costChanged ? 'font-bold text-amber-700' : 'text-stone-600'}>
@@ -1170,8 +1185,23 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
                                   {row.sku}
                                 </td>
                                 <td className="p-2">
-                                  <div className="font-medium text-stone-900">{row.name}</div>
-                                  <div className="text-[10px] text-stone-500">{row.category}</div>
+                                  <div className="flex items-center gap-2">
+                                    {row.imageUrl ? (
+                                      <img
+                                        src={row.imageUrl}
+                                        alt={row.name}
+                                        className="w-7 h-7 rounded object-cover border border-stone-200 shrink-0 bg-stone-100"
+                                        referrerPolicy="no-referrer"
+                                        onError={(e) => {
+                                          (e.target as HTMLElement).style.display = 'none';
+                                        }}
+                                      />
+                                    ) : null}
+                                    <div className="min-w-0">
+                                      <div className="font-medium text-stone-900 truncate">{row.name}</div>
+                                      <div className="text-[10px] text-stone-500 truncate">{row.category}</div>
+                                    </div>
+                                  </div>
                                 </td>
                                 <td className="p-2 text-right whitespace-nowrap text-[11px]">
                                   <span className="text-stone-500">RM {row.costPrice.toFixed(2)}</span>

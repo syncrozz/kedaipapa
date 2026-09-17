@@ -252,6 +252,7 @@ export interface ProductCatalogUpdatePayload {
   sellingPrice: number;
   minimumStock: number;
   active: boolean;
+  imageUrl?: string;
   ignoredCsvStock?: number;
 }
 
@@ -285,12 +286,14 @@ export interface MasterSyncProductRow {
   stockDifference?: number;
   minimumStock: number;
   active: boolean;
+  imageUrl?: string;
   reason: string;
   stockNote: string;
   existingProductId?: string;
   costChanged?: boolean;
   sellingPriceChanged?: boolean;
   stockChanged?: boolean;
+  imageUrlChanged?: boolean;
   rawRow: Record<string, string>;
 }
 

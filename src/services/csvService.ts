@@ -1,6 +1,6 @@
 /**
  * Kedai PAPA POS - Reusable CSV Export & Import Service
- * SYNCROZZ Engineering Standard (SES) v4.4 Locked
+ * SYNCROZZ Engineering Standard (SES) v4.5 Locked
  *
  * Requirements:
  * - RFC 4180 standard compliant
@@ -8,6 +8,8 @@
  * - Proper escaping of quotes, commas, and multiline values
  * - Preserves leading zeroes and text values (e.g. phone numbers, codes)
  * - Controlled import validation with pre-commit review summary
+ * - CSV Image URL Backup & Restore: exports imageUrl, safely validates and restores imageUrl on import,
+ *   preserves existing imageUrl on empty/invalid import, and maintains 100% backward compatibility.
  */
 
 import {
@@ -52,6 +54,7 @@ export interface CsvProductImportRow {
   csvStock: number;
   minimumStock: number;
   active: boolean;
+  imageUrl?: string;
   reason: string;
   stockNote: string;
   existingProductId?: string;
@@ -109,9 +112,55 @@ export class CsvService {
   }
 
   /**
-   * Exports Products catalogue to CSV.
+   * Validates whether a given string is a safe and valid Image URL or relative image path.
+   * - Allows http:// and https:// URLs with valid hostnames.
+   * - Allows root-relative image paths (e.g. /favicon.svg, /images/prod.png).
+   * - Allows valid image data URIs (e.g. data:image/png;base64,...).
+   * - Safely rejects javascript:, vbscript:, malformed protocols, and empty values.
    */
-  public static exportProducts(products: Product[]): void {
+  public static isValidImageUrl(url: string | null | undefined): boolean {
+    if (!url || typeof url !== 'string') return false;
+    const trimmed = url.trim();
+    if (!trimmed) return false;
+
+    // Disallow dangerous protocols
+    if (/^(javascript|vbscript|file):/i.test(trimmed)) {
+      return false;
+    }
+
+    // Standard HTTP/HTTPS URLs
+    if (/^https?:\/\//i.test(trimmed)) {
+      try {
+        const parsed = new URL(trimmed);
+        return Boolean(parsed.hostname && (parsed.protocol === 'http:' || parsed.protocol === 'https:'));
+      } catch {
+        return false;
+      }
+    }
+
+    // Valid Image Data URIs
+    if (/^data:image\/(png|jpeg|jpg|webp|gif|svg\+xml);base64,/i.test(trimmed)) {
+      return true;
+    }
+
+    // Relative and root-relative image paths (e.g. /favicon.svg, ./assets/img.png)
+    if (/^(\/|\.\/|\.\.\/)[a-zA-Z0-9_.\-\/]+\.(png|jpe?g|webp|gif|svg|ico)$/i.test(trimmed)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Generates CSV content and backup filename for Products catalogue (SES v4.5).
+   * Includes Image URL (imageUrl) for every product while preserving all existing product fields.
+   */
+  public static generateProductsCsvContent(products: Product[]): {
+    headers: string[];
+    rows: (string | number | boolean | null | undefined)[][];
+    csvText: string;
+    filename: string;
+  } {
     const headers = [
       'SKU',
       'Name',
@@ -121,6 +170,7 @@ export class CsvService {
       'Current Stock',
       'Minimum Stock',
       'Status',
+      'Image URL',
     ];
 
     const rows = products.map((p) => [
@@ -132,10 +182,35 @@ export class CsvService {
       p.currentStock,
       p.minimumStock,
       p.active ? 'ACTIVE' : 'INACTIVE',
+      p.imageUrl || p.image || '',
     ]);
 
+    const escapeCell = (val: string | number | boolean | null | undefined): string => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const headerLine = headers.map(escapeCell).join(',');
+    const bodyLines = rows.map((r) => r.map(escapeCell).join(',')).join('\r\n');
+    const csvText = `\uFEFF${headerLine}\r\n${bodyLines}`;
+
     const dateStr = new Date().toISOString().slice(0, 10);
-    this.downloadCsv(`kedai_papa_products_${dateStr}.csv`, headers, rows);
+    const filename = `kedai_papa_products_backup_${dateStr}.csv`;
+
+    return { headers, rows, csvText, filename };
+  }
+
+  /**
+   * Exports Products catalogue to CSV (SES v4.5).
+   * Generates backup filename: kedai_papa_products_backup_YYYY-MM-DD.csv
+   */
+  public static exportProducts(products: Product[]): void {
+    const { headers, rows, filename } = this.generateProductsCsvContent(products);
+    this.downloadCsv(filename, headers, rows);
   }
 
   /**
@@ -343,6 +418,7 @@ export class CsvService {
 
       const rawMinStock = findVal(/min|minimum|ambang/i);
       const rawStatus = findVal(/status|active|aktif/i);
+      const rawImageUrl = findVal(/image.*url|image_url|imageUrl|url.*gambar|image|gambar|foto|photo/i);
 
       const sku = SmartInputService.normalizeCode(rawSku);
       const name = SmartInputService.normalizeName(rawName);
@@ -439,6 +515,24 @@ export class CsvService {
           ? Math.max(0, Math.floor(SmartInputService.parseNumeric(rawMinStock, existingProd.minimumStock)))
           : existingProd.minimumStock;
 
+        // Image URL handling (SES v4.5):
+        // 1. If valid URL provided: use it to restore/update product imageUrl.
+        // 2. If empty or whitespace: strictly preserve existing product imageUrl.
+        // 3. If invalid URL: safely reject and preserve existing imageUrl, preventing corruption or unintended updates.
+        let targetImageUrl: string | undefined = existingProd.imageUrl || existingProd.image;
+        const trimmedRawImg = (rawImageUrl || '').trim();
+        if (trimmedRawImg) {
+          if (CsvService.isValidImageUrl(trimmedRawImg)) {
+            targetImageUrl = trimmedRawImg;
+          } else {
+            errors.push({
+              rowNumber,
+              reason: `Amaran: Format URL Gambar '${trimmedRawImg}' tidak sah dan telah diabaikan. URL gambar sedia ada dikekalkan.`,
+              rawRow: row,
+            });
+          }
+        }
+
         if (mode === 'SKIP_EXISTING') {
           const reason = `SKU '${sku}' sudah wujud dalam katalog (mod Langkau Sedia Ada).`;
           duplicates.push({ rowNumber, reason, item: { sku, name } });
@@ -453,6 +547,7 @@ export class CsvService {
             csvStock: parsedStock,
             minimumStock,
             active: isActive,
+            imageUrl: targetImageUrl,
             reason,
             stockNote: 'Stock column ignored for existing products.',
             existingProductId: existingProd.id,
@@ -470,6 +565,7 @@ export class CsvService {
             sellingPrice,
             minimumStock,
             active: isActive,
+            imageUrl: targetImageUrl,
             ignoredCsvStock: parsedStock,
           };
           updateItems.push(updateItem);
@@ -484,6 +580,7 @@ export class CsvService {
             csvStock: parsedStock,
             minimumStock,
             active: isActive,
+            imageUrl: targetImageUrl,
             reason,
             stockNote: 'Stock column ignored for existing products.',
             existingProductId: existingProd.id,
@@ -497,6 +594,20 @@ export class CsvService {
         const category = (rawCategory || 'Snacks & Biscuits').trim();
         const minimumStock = Math.max(0, Math.floor(SmartInputService.parseNumeric(rawMinStock, 5)));
 
+        let newImageUrl: string | undefined = undefined;
+        const trimmedRawImg = (rawImageUrl || '').trim();
+        if (trimmedRawImg) {
+          if (CsvService.isValidImageUrl(trimmedRawImg)) {
+            newImageUrl = trimmedRawImg;
+          } else {
+            errors.push({
+              rowNumber,
+              reason: `Amaran: Format URL Gambar '${trimmedRawImg}' tidak sah dan telah diabaikan.`,
+              rawRow: row,
+            });
+          }
+        }
+
         const newItem: Omit<Product, 'id' | 'storeId' | 'createdAt' | 'updatedAt'> = {
           sku,
           name,
@@ -506,6 +617,7 @@ export class CsvService {
           currentStock: parsedStock,
           minimumStock,
           active: isActive,
+          imageUrl: newImageUrl,
         };
 
         newItems.push(newItem);
@@ -520,6 +632,7 @@ export class CsvService {
           csvStock: parsedStock,
           minimumStock,
           active: isActive,
+          imageUrl: newImageUrl,
           reason: 'Produk baru - akan didaftarkan ke katalog.',
           stockNote:
             parsedStock > 0
@@ -635,6 +748,7 @@ export class CsvService {
 
       const rawMinStock = findVal(/min|minimum|ambang/i);
       const rawStatus = findVal(/status|active|aktif/i);
+      const rawImageUrl = findVal(/image.*url|image_url|imageUrl|url.*gambar|image|gambar|foto|photo/i);
 
       const sku = SmartInputService.normalizeCode(rawSku);
       const name = SmartInputService.normalizeName(rawName);
@@ -804,6 +918,30 @@ export class CsvService {
           active = existingProd.active;
         }
 
+        // Image URL handling (SES v4.5):
+        // - Non-empty valid URL: update imageUrl, set imageUrlChanged = true if different
+        // - Empty/whitespace: strictly preserve existing imageUrl, imageUrlChanged = false (no false update)
+        // - Invalid URL: safely ignore invalid URL and preserve existing imageUrl, imageUrlChanged = false
+        const currentImageUrl = existingProd.imageUrl || existingProd.image || '';
+        let targetImageUrl: string | undefined = currentImageUrl || undefined;
+        let imageUrlChanged = false;
+        const trimmedRawImg = (rawImageUrl || '').trim();
+
+        if (trimmedRawImg) {
+          if (CsvService.isValidImageUrl(trimmedRawImg)) {
+            if (trimmedRawImg !== currentImageUrl) {
+              targetImageUrl = trimmedRawImg;
+              imageUrlChanged = true;
+            }
+          } else {
+            errors.push({
+              rowNumber,
+              reason: `Amaran: URL Gambar '${trimmedRawImg}' tidak sah dan telah diabaikan bagi SKU '${sku}'. URL sedia ada dikekalkan.`,
+              rawRow: row,
+            });
+          }
+        }
+
         const currentStock = existingProd.currentStock;
         const stockDifference = csvStock - currentStock;
         const costChanged = Math.abs(costPrice - existingProd.costPrice) > 0.0001;
@@ -821,7 +959,8 @@ export class CsvService {
           nameChanged ||
           categoryChanged ||
           minStockChanged ||
-          activeChanged;
+          activeChanged ||
+          imageUrlChanged;
 
         const action: 'UPDATE' | 'UNCHANGED' = isUpdated ? 'UPDATE' : 'UNCHANGED';
         let reason = '';
@@ -845,6 +984,7 @@ export class CsvService {
           if (categoryChanged) changes.push(`kategori (${existingProd.category} → ${category})`);
           if (minStockChanged) changes.push(`min stok (${existingProd.minimumStock} → ${minimumStock})`);
           if (activeChanged) changes.push(`status (${existingProd.active ? 'Aktif' : 'Tidak Aktif'} → ${active ? 'Aktif' : 'Tidak Aktif'})`);
+          if (imageUrlChanged) changes.push('URL gambar dikemas kini');
           reason = `Katalog dikemas kini: ${changes.join(', ')}.`;
         } else {
           reason = 'Data katalog dan stok semasa sepadan sepenuhnya dengan fail CSV.';
@@ -863,16 +1003,32 @@ export class CsvService {
           stockDifference,
           minimumStock,
           active,
+          imageUrl: targetImageUrl,
           reason,
           stockNote,
           existingProductId: existingProd.id,
           costChanged,
           sellingPriceChanged,
           stockChanged,
+          imageUrlChanged,
           rawRow: row,
         });
       } else {
         // Genuinely NEW product
+        let newImageUrl: string | undefined = undefined;
+        const trimmedRawImg = (rawImageUrl || '').trim();
+        if (trimmedRawImg) {
+          if (CsvService.isValidImageUrl(trimmedRawImg)) {
+            newImageUrl = trimmedRawImg;
+          } else {
+            errors.push({
+              rowNumber,
+              reason: `Amaran: URL Gambar '${trimmedRawImg}' tidak sah dan telah diabaikan bagi produk baharu SKU '${sku}'.`,
+              rawRow: row,
+            });
+          }
+        }
+
         const stockNote =
           csvStock > 0
             ? `Pembukaan stok: ${csvStock} unit (STOCK_IN direkodkan)`
@@ -891,11 +1047,13 @@ export class CsvService {
           stockDifference: csvStock,
           minimumStock,
           active,
+          imageUrl: newImageUrl,
           reason: 'Produk baharu - akan didaftarkan ke dalam katalog master.',
           stockNote,
           costChanged: true,
           sellingPriceChanged: true,
           stockChanged: csvStock > 0,
+          imageUrlChanged: Boolean(newImageUrl),
           rawRow: row,
         });
       }
